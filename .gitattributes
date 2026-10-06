@@ -1,0 +1,5 @@
+* text=auto eol=lf
+src/generated/** linguist-generated=true
+api.md linguist-generated=true
+conformance/fixtures/** linguist-generated=true
+package-lock.json linguist-generated=true
