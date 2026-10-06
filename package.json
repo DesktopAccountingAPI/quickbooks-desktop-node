@@ -1,6 +1,6 @@
 {
   "name": "@desktopaccountingapi/quickbooks-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node.js and TypeScript SDK for Desktop Accounting API, the REST API for QuickBooks Desktop.",
   "license": "MIT",
   "author": "Desktop Accounting API",
@@ -59,6 +59,7 @@
     "test:conformance": "node --test test/conformance.test.ts",
     "test:dist": "node scripts/test-dist.mjs",
     "typecheck:examples": "tsc -p examples/tsconfig.json",
+    "test:readme": "node scripts/readme-samples.mjs --lang ts",
     "smoke": "node scripts/smoke.mjs",
     "pack:check": "node scripts/check-pack.mjs"
   },

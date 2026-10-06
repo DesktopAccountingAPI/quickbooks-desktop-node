@@ -3,7 +3,7 @@
 node = "24.20.0"
 
 [tasks.check]
-description = "Install, typecheck, build, unit tests, conformance suite, examples, package smoke tests and package contents"
+description = "Install, typecheck, build, unit tests, conformance suite, examples, README samples, package smoke tests and package contents"
 run = [
   "npm ci --no-audit --no-fund",
   "npm run typecheck",
@@ -11,6 +11,7 @@ run = [
   "npm test",
   "npm run test:conformance",
   "npm run typecheck:examples",
+  "npm run test:readme",
   "npm run smoke",
   "npm run pack:check",
   "bash scripts/publish.sh --dry-run --skip-check",
