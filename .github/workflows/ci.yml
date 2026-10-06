@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: mise run check (Node.js 24)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - run: mise run check
+
+  node:
+    name: Node.js ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      # Install and build with the pinned toolchain, then run the compiled unit tests, the
+      # conformance suite and the import/require smoke test on the matrix version.
+      - run: npm ci --no-audit --no-fund
+      - run: mise run test:node
+        env:
+          NODE_TEST_VERSION: ${{ matrix.node }}

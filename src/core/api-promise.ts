@@ -1,0 +1,82 @@
+// APIPromise: the awaitable every non-paginated method returns. Hand-written runtime.
+
+/** @internal A finished HTTP exchange whose body has not been parsed yet. */
+export interface RawResult<T> {
+  response: Response;
+  read(): Promise<T>;
+}
+
+/** Parsed result together with the HTTP response it came from. */
+export interface WithResponse<T> {
+  data: T;
+  response: Response;
+  /** `Daapi-Request-Id` of the response. */
+  requestId: string | null;
+}
+
+/**
+ * A promise for the parsed result of an API call. Await it for the typed data, or call
+ * `.withResponse()` to also get the HTTP response (status, headers, `Daapi-Request-Id`,
+ * `Daapi-Warnings`), or `.asResponse()` for the unread `Response` alone.
+ */
+export class APIPromise<T> implements PromiseLike<T> {
+  readonly #raw: Promise<RawResult<T>>;
+  #parsed: Promise<T> | undefined;
+
+  /** @internal */
+  constructor(raw: Promise<RawResult<T>>) {
+    this.#raw = raw;
+    // Errors surface when the caller awaits; an un-awaited call must not crash the process.
+    raw.catch(() => undefined);
+  }
+
+  #data(): Promise<T> {
+    this.#parsed ??= this.#raw.then((r) => r.read());
+    return this.#parsed;
+  }
+
+  /**
+   * The HTTP response without reading its body. Call it instead of awaiting the promise;
+   * after the data was parsed the body is already consumed. For a call that long-polled a
+   * pending request, this is the last poll's response.
+   */
+  asResponse(): Promise<Response> {
+    return this.#raw.then((r) => r.response);
+  }
+
+  /** The parsed data plus the HTTP response and its `Daapi-Request-Id`. */
+  async withResponse(): Promise<WithResponse<T>> {
+    const raw = await this.#raw;
+    const data = await this.#data();
+    return { data, response: raw.response, requestId: raw.response.headers.get("daapi-request-id") };
+  }
+
+  /** @internal Transforms the parsed data, keeping the same response. */
+  _thenData<U>(transform: (data: T, response: Response) => U | Promise<U>): APIPromise<U> {
+    return new APIPromise<U>(
+      this.#raw.then((r) => ({
+        response: r.response,
+        read: async () => transform(await r.read(), r.response),
+      })),
+    );
+  }
+
+  then<R1 = T, R2 = never>(
+    onfulfilled?: ((value: T) => R1 | PromiseLike<R1>) | null,
+    onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null,
+  ): Promise<R1 | R2> {
+    return this.#data().then(onfulfilled, onrejected);
+  }
+
+  catch<R = never>(onrejected?: ((reason: unknown) => R | PromiseLike<R>) | null): Promise<T | R> {
+    return this.#data().catch(onrejected);
+  }
+
+  finally(onfinally?: (() => void) | null): Promise<T> {
+    return this.#data().finally(onfinally);
+  }
+
+  get [Symbol.toStringTag](): string {
+    return "APIPromise";
+  }
+}
