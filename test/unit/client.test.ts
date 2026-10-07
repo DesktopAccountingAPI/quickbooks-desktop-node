@@ -4,14 +4,31 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIError,
+  APIUserAbortError,
   ApiConnectionError,
+  ApiError,
   ApiTimeoutError,
+  ApiUserAbortError,
+  BadRequestError,
+  ConductorError,
+  ConflictError,
   CursorExpiredError,
   DaapiError,
   DesktopAccountingApi,
   IntegrationConnectionError,
+  InternalServerError,
+  InvalidRequestError,
+  NotFoundError,
+  PagePromise,
+  PermissionDeniedError,
+  PermissionError,
+  RateLimitError,
   RequestHandle,
   RequestPendingError,
+  UnprocessableEntityError,
   VERSION,
   type Invoice,
   type Logger,
@@ -202,7 +219,38 @@ describe("retries and timeouts", () => {
     const controller = new AbortController();
     const p = client(fetch).qbd.invoices.retrieve("1", { signal: controller.signal });
     controller.abort();
-    await assert.rejects(p, (e: unknown) => e instanceof DaapiError && /aborted/.test(e.message));
+    await assert.rejects(p, (e: unknown) => e instanceof ApiUserAbortError && e instanceof DaapiError && /aborted/.test(e.message));
+  });
+
+  test("totalTimeout cuts off the attempt and starts no retry after the budget", async () => {
+    const fetch = (_url: string, init: RequestInit): Promise<Response> =>
+      new Promise((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason)));
+    const started = Date.now();
+    let attempts = 0;
+    const counting = (url: string, init: RequestInit): Promise<Response> => (attempts++, fetch(url, init));
+    await assert.rejects(client(counting, { maxRetries: 5, timeout: 10_000, totalTimeout: 120 }).qbd.invoices.retrieve("1"), ApiTimeoutError);
+    assert.ok(Date.now() - started < 1000, "stopped at the total timeout, not the attempt timeout");
+    assert.equal(attempts, 1, "the backoff would end after the total timeout, so no retry starts");
+  });
+
+  test("totalTimeout is per call and also bounds retries after errors", async () => {
+    const reply = (): Response => apiError(503, { type: "INTEGRATION_CONNECTION_ERROR", code: "QBD_MODAL_DIALOG_OPEN" }, { "Daapi-Should-Retry": "true", "Retry-After": "1" });
+    const { fetch, calls } = scriptedFetch([reply(), reply()]);
+    await assert.rejects(client(fetch).qbd.invoices.retrieve("1", { totalTimeout: 500 }), IntegrationConnectionError);
+    assert.equal(calls.length, 1, "Retry-After 1 s is longer than the remaining budget");
+  });
+
+  test("totalTimeout is the wait budget for a pending request", async () => {
+    const pending = apiError(504, { type: "INTEGRATION_CONNECTION_ERROR", code: "QBD_REQUEST_TIMEOUT", outcome: "pending", details: { requestId: "req_1" } }, { "Daapi-Should-Retry": "false" });
+    const poll = (): Response => json(200, requestResource("sent"));
+    const { fetch } = scriptedFetch([pending, poll, poll, poll, poll, poll, poll, poll, poll]);
+    const slowPoll: typeof fetch = async (url, init) => {
+      if (url.includes("/requests/")) await new Promise((r) => setTimeout(r, 40));
+      return fetch(url, init);
+    };
+    const started = Date.now();
+    await assert.rejects(client(slowPoll, { timeout: 60_000, totalTimeout: 150 }).qbd.invoices.create({ customerId: "c" }), RequestPendingError);
+    assert.ok(Date.now() - started < 2000);
   });
 
   test("504 QBD_REQUEST_TIMEOUT long-polls and raises RequestPendingError at the deadline", async () => {
@@ -270,27 +318,52 @@ describe("async mode", () => {
 });
 
 describe("pagination", () => {
-  test("reads one page ahead and sends only cursor and limit on continue requests", async () => {
-    let releaseThird: (() => void) | undefined;
-    const third = new Promise<void>((r) => (releaseThird = r));
-    const { fetch, calls } = scriptedFetch([page(["1", "2"], "c2"), page(["3", "4"], "c3"), async () => (await third, page(["5"], null))]);
+  test("requests the next page when the iteration needs it and sends only cursor and limit on continue requests", async () => {
+    const { fetch, calls } = scriptedFetch([page(["1", "2"], "c2"), page(["3", "4"], "c3"), page(["5"], null)]);
     const seen: string[] = [];
     const list = client(fetch).qbd.invoices.list({ customerIds: ["a", "b"], limit: 2, updatedAfter: "2026-01-01" });
     for await (const inv of list) {
       seen.push(inv.id);
-      if (inv.id === "1") {
+      if (inv.id === "2") {
         await new Promise((r) => setTimeout(r, 10));
-        assert.equal(calls.length, 2, "page 2 was requested while page 1 was being consumed");
+        assert.equal(calls.length, 1, "a fast consumer gets no read-ahead");
       }
-      if (inv.id === "3") {
-        assert.equal(calls.length, 3);
-        releaseThird?.();
-      }
+      if (inv.id === "3") assert.equal(calls.length, 2);
     }
     assert.deepEqual(seen, ["1", "2", "3", "4", "5"]);
     assert.equal(calls[0]!.url.search, "?customerIds=a&customerIds=b&limit=2&updatedAfter=2026-01-01");
     assert.equal(calls[1]!.url.search, "?cursor=c2&limit=2");
     assert.equal(calls[2]!.url.search, "?cursor=c3&limit=2");
+  });
+
+  test("a loop that stops early sends no extra request", async () => {
+    for (const stopAt of ["1", "2"]) {
+      const { fetch, calls } = scriptedFetch([page(["1", "2"], "c2")]);
+      for await (const inv of client(fetch).qbd.invoices.list({ limit: 2 })) if (inv.id === stopAt) break;
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(calls.length, 1, `stopped at ${stopAt}`);
+    }
+    const { fetch, calls } = scriptedFetch([page(["1"], "c2")]);
+    for await (const p of client(fetch).qbd.invoices.list().pages()) if (p.data.length > 0) break;
+    assert.equal(calls.length, 1, "pages() is lazy too");
+  });
+
+  test("a slow consumer gets the next page requested in the background", async () => {
+    const saved = PagePromise.readAheadAfterMs;
+    PagePromise.readAheadAfterMs = 20;
+    try {
+      const { fetch, calls } = scriptedFetch([page(["1", "2", "3"], "c2"), page(["4"], null)]);
+      const seen: string[] = [];
+      for await (const inv of client(fetch).qbd.invoices.list({ limit: 3 })) {
+        seen.push(inv.id);
+        if (inv.id === "1") await new Promise((r) => setTimeout(r, 30));
+        if (inv.id === "2") assert.equal(calls.length, 2, "page 2 was requested while page 1 was still being consumed");
+      }
+      assert.deepEqual(seen, ["1", "2", "3", "4"]);
+      assert.equal(calls.length, 2);
+    } finally {
+      PagePromise.readAheadAfterMs = saved;
+    }
   });
 
   test("continue requests omit limit when the caller did not set it", async () => {
@@ -333,6 +406,121 @@ describe("pagination", () => {
   });
 });
 
+describe("Conductor compatibility", () => {
+  test("conductorEndUserId in params is sent as Daapi-End-User-Id, removed from the query and kept for continue requests", async () => {
+    const { fetch, calls } = scriptedFetch([page(["1"], "c2"), page(["2"], null)]);
+    const seen: string[] = [];
+    for await (const inv of client(fetch).qbd.invoices.list({ conductorEndUserId: "eu_ported", limit: 1 })) seen.push(inv.id);
+    assert.deepEqual(seen, ["1", "2"]);
+    assert.equal(calls[0]!.url.search, "?limit=1");
+    assert.equal(calls[1]!.url.search, "?cursor=c2&limit=1");
+    for (const c of calls) {
+      assert.equal(c.headers.get("daapi-end-user-id"), "eu_ported");
+      assert.equal(c.headers.get("conductor-end-user-id"), null);
+    }
+  });
+
+  test("conductorEndUserId in a body or in the call options", async () => {
+    const { fetch, calls } = scriptedFetch([json(201, invoice("7")), json(200, invoice("7")), json(200, { status: "ok" })]);
+    const c = client(fetch, { endUserId: null });
+    await c.qbd.invoices.create({ conductorEndUserId: "eu_body", customerId: "c1" });
+    await c.qbd.invoices.retrieve("7", { conductorEndUserId: "eu_option" });
+    await c.qbd.healthCheck({ conductorEndUserId: "eu_health" });
+    assert.deepEqual(JSON.parse(calls[0]!.body!), { customerId: "c1" });
+    assert.deepEqual(calls.map((x) => x.headers.get("daapi-end-user-id")), ["eu_body", "eu_option", "eu_health"]);
+  });
+
+  test("the same end user under both names is fine; different values fail before sending", async () => {
+    const { fetch, calls } = scriptedFetch([json(200, invoice("7"))]);
+    await client(fetch).qbd.invoices.retrieve("7", { endUserId: "eu_a", conductorEndUserId: "eu_a" });
+    await assert.rejects(client(fetch).qbd.invoices.retrieve("7", { endUserId: "eu_a", conductorEndUserId: "eu_b" }), DaapiError);
+    await assert.rejects(client(fetch).qbd.invoices.update("7", { conductorEndUserId: "eu_b", revisionNumber: "1" }, { endUserId: "eu_a" }), DaapiError);
+    const listing = client(fetch).qbd.invoices.list({ conductorEndUserId: "eu_b" }, { endUserId: "eu_a" });
+    await assert.rejects(listing.listAll(), DaapiError);
+    assert.equal(calls.length, 1);
+  });
+
+  test("baseURL alias and a base URL ending in /v1", async () => {
+    const { fetch, calls } = scriptedFetch([json(200, { status: "ok" })]);
+    const c = new DesktopAccountingApi({ apiKey: TEST_KEY, baseURL: "https://api.test/base/v1/", endUserId: END_USER, fetch });
+    assert.equal(c.baseUrl, "https://api.test/base");
+    await c.qbd.healthCheck();
+    assert.equal(calls[0]!.url.pathname, "/base/v1/quickbooks-desktop/health-check");
+    assert.equal(new DesktopAccountingApi({ apiKey: TEST_KEY, baseUrl: "https://api.test/v1" }).baseUrl, "https://api.test");
+    assert.equal(new DesktopAccountingApi({ apiKey: TEST_KEY, baseUrl: "https://api.test/v1", baseURL: "https://api.test" }).baseUrl, "https://api.test");
+    assert.throws(() => new DesktopAccountingApi({ apiKey: TEST_KEY, baseUrl: "https://a.test", baseURL: "https://b.test" }), DaapiError);
+    assert.equal(c.withOptions({ baseURL: "https://other.test/v1" }).baseUrl, "https://other.test");
+    process.env["DAAPI_BASE_URL"] = "https://env.test/v1";
+    assert.equal(new DesktopAccountingApi({ apiKey: TEST_KEY }).baseUrl, "https://env.test");
+  });
+
+  test("defaultHeaders and per-call headers; SDK-managed headers win", async () => {
+    const { fetch, calls } = scriptedFetch([json(200, invoice("1")), json(200, invoice("1"))]);
+    const c = client(fetch, { defaultHeaders: { "X-Team": "billing", "X-Drop": "1", Authorization: "Bearer nope", "Daapi-End-User-Id": "eu_header" } });
+    await c.qbd.invoices.retrieve("1");
+    await c.qbd.invoices.retrieve("1", { headers: { "X-Call": "yes", "X-Drop": null } });
+    assert.equal(calls[0]!.headers.get("x-team"), "billing");
+    assert.equal(calls[0]!.headers.get("x-drop"), "1");
+    assert.equal(calls[0]!.headers.get("authorization"), `Bearer ${TEST_KEY}`);
+    assert.equal(calls[0]!.headers.get("daapi-end-user-id"), END_USER);
+    assert.equal(calls[1]!.headers.get("x-call"), "yes");
+    assert.equal(calls[1]!.headers.get("x-drop"), null);
+    assert.equal(calls[1]!.headers.get("x-team"), "billing");
+  });
+
+  test("fetchOptions are passed to fetch; per-call values override client values; the SDK owns method, headers, body and signal", async () => {
+    const inits: RequestInit[] = [];
+    const fetch = async (_url: string, init: RequestInit): Promise<Response> => (inits.push(init), json(200, invoice("1")));
+    const c = client(fetch, { fetchOptions: { keepalive: true, redirect: "error", method: "DELETE" } });
+    await c.qbd.invoices.retrieve("1");
+    await c.qbd.invoices.retrieve("1", { fetchOptions: { redirect: "manual" } });
+    assert.equal(inits[0]!.keepalive, true);
+    assert.equal(inits[0]!.redirect, "error");
+    assert.equal(inits[0]!.method, "GET");
+    assert.ok(inits[0]!.signal);
+    assert.equal(inits[1]!.redirect, "manual");
+    assert.equal(inits[1]!.keepalive, true);
+  });
+
+  test("Conductor error names and fields", async () => {
+    assert.equal(APIError, ApiError);
+    assert.equal(ConductorError, DaapiError);
+    assert.equal(APIConnectionError, ApiConnectionError);
+    assert.equal(APIConnectionTimeoutError, ApiTimeoutError);
+    assert.equal(APIUserAbortError, ApiUserAbortError);
+    assert.equal(PermissionDeniedError, PermissionError);
+    assert.equal(DesktopAccountingApi.APIError, ApiError);
+    assert.equal(DesktopAccountingApi.NotFoundError, NotFoundError);
+    const { fetch } = scriptedFetch([
+      apiError(404, { type: "INVALID_REQUEST_ERROR", code: "OBJECT_NOT_FOUND", httpStatusCode: 404, integrationCode: "500" }, { "Daapi-Should-Retry": "false", "Daapi-Request-Id": "req_h" }),
+      apiError(503, { type: "INTEGRATION_CONNECTION_ERROR", code: "QBD_CONNECTION_ERROR", httpStatusCode: 503 }, { "Daapi-Should-Retry": "false" }),
+    ]);
+    const c = client(fetch);
+    const notFound = await c.qbd.invoices.retrieve("1").catch((e: unknown) => e);
+    assert.ok(notFound instanceof InvalidRequestError, "the thrown class is still the one for the error type");
+    assert.ok(notFound instanceof NotFoundError);
+    assert.ok(notFound instanceof DesktopAccountingApi.APIError);
+    assert.ok(!(notFound instanceof BadRequestError) && !(notFound instanceof ConflictError) && !(notFound instanceof UnprocessableEntityError) && !(notFound instanceof InternalServerError));
+    assert.ok(!(new Error("x") instanceof NotFoundError));
+    const e = notFound as ApiError;
+    assert.equal(e.status, 404);
+    assert.equal(e.code, "OBJECT_NOT_FOUND");
+    assert.equal(e.type, "INVALID_REQUEST_ERROR");
+    assert.equal(e.httpStatusCode, 404);
+    assert.equal(e.integrationCode, "500");
+    assert.equal(e.userFacingMessage, "Something went wrong.");
+    assert.equal(e.requestId, "req_test");
+    assert.ok(Array.isArray(e.fixes));
+    // conductor-node code unwraps err.error.error; it is the same error object.
+    assert.equal(e.error?.error?.code, "OBJECT_NOT_FOUND");
+    assert.equal(e.error?.error, e.error);
+    assert.equal(JSON.parse(JSON.stringify(e.error))["error"], undefined, "the alias is not serialized");
+    const unavailable = await c.qbd.invoices.retrieve("1").catch((x: unknown) => x);
+    assert.ok(unavailable instanceof IntegrationConnectionError && unavailable instanceof InternalServerError);
+    assert.ok(new RateLimitError(429, { type: "RATE_LIMIT_ERROR" }) instanceof APIError);
+  });
+});
+
 describe("logging", () => {
   test("logger receives method, path and status but never the key or bodies", async () => {
     const lines: string[] = [];
@@ -347,5 +535,29 @@ describe("logging", () => {
     assert.match(all, /429/);
     assert.ok(!all.includes(TEST_KEY) && !all.includes("QFLR"), "no key");
     assert.ok(!all.includes("private memo") && !all.includes("secret-customer"), "no body");
+  });
+
+  test("logLevel filters lines; off disables logging", async () => {
+    const levels: string[] = [];
+    const logger: Logger = { debug: () => levels.push("debug"), warn: () => levels.push("warn") };
+    const replies = (): Response[] => [apiError(429, { type: "RATE_LIMIT_ERROR", code: "RATE_LIMITED" }, { "Retry-After": "0" }), json(200, invoice("7"))];
+    await client(scriptedFetch(replies()).fetch, { logger, logLevel: "warn" }).qbd.invoices.retrieve("7");
+    assert.deepEqual(levels, ["warn"]);
+    levels.length = 0;
+    await client(scriptedFetch(replies()).fetch, { logger, logLevel: "off" }).qbd.invoices.retrieve("7");
+    assert.deepEqual(levels, []);
+    assert.throws(() => client(scriptedFetch([]).fetch, { logLevel: "verbose" as never }), DaapiError);
+  });
+
+  test("DAAPI_LOG without a logger logs to console", async (t) => {
+    const lines: unknown[] = [];
+    t.mock.method(console, "debug", (...args: unknown[]) => void lines.push(args[0]));
+    process.env["DAAPI_LOG"] = "debug";
+    try {
+      await client(scriptedFetch([json(200, invoice("7"))]).fetch).qbd.invoices.retrieve("7");
+    } finally {
+      delete process.env["DAAPI_LOG"];
+    }
+    assert.deepEqual(lines, ["daapi response"]);
   });
 });

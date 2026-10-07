@@ -43,13 +43,23 @@ type JsonObject = { [key: string]: Json };
 interface Scenario {
   name: string;
   description?: string;
-  client?: { apiKey?: string; endUserId?: string | null; maxRetries?: number; timeoutMs?: number };
+  only?: string[];
+  client?: {
+    apiKey?: string;
+    endUserId?: string | null;
+    maxRetries?: number;
+    timeoutMs?: number;
+    baseUrlSuffix?: string;
+    defaultHeaders?: Record<string, string>;
+    totalTimeoutMs?: number;
+  };
   call: {
     op: string;
     kind: "call" | "iterate" | "firstPage" | "withResponse" | "enqueue";
     path?: Record<string, string>;
     params?: JsonObject;
-    options?: { idempotencyKey?: string; endUserId?: string; timeoutMs?: number; serverTimeoutSeconds?: number };
+    options?: { idempotencyKey?: string; endUserId?: string; conductorEndUserId?: string; timeoutMs?: number; serverTimeoutSeconds?: number };
+    take?: number;
     wait?: { timeoutMs?: number };
   };
   outcome: {
@@ -171,11 +181,13 @@ function makeClient(sc: Scenario): DesktopAccountingApi {
   const endUserId = "endUserId" in c ? c.endUserId : d.endUserId;
   const options: ClientOptions = {
     apiKey: c.apiKey ?? fixtures.apiKey,
-    baseUrl: `${baseUrl}/s/${sc.name}`,
+    baseUrl: `${baseUrl}/s/${sc.name}${c.baseUrlSuffix ?? ""}`,
     endUserId: endUserId ?? null,
     maxRetries: "maxRetries" in c ? c.maxRetries : d.maxRetries,
     timeout: "timeoutMs" in c ? c.timeoutMs : d.timeoutMs,
   };
+  if (c.defaultHeaders) options.defaultHeaders = c.defaultHeaders;
+  if (c.totalTimeoutMs !== undefined) options.totalTimeout = c.totalTimeoutMs;
   return new DesktopAccountingApi(options);
 }
 
@@ -215,6 +227,7 @@ async function runScenario(sc: Scenario): Promise<Observed> {
   const options: RequestOptions = {};
   if (o.idempotencyKey !== undefined) options.idempotencyKey = o.idempotencyKey;
   if (o.endUserId !== undefined) options.endUserId = o.endUserId;
+  if (o.conductorEndUserId !== undefined) options.conductorEndUserId = o.conductorEndUserId;
   if (o.timeoutMs !== undefined) options.timeout = o.timeoutMs;
   if (o.serverTimeoutSeconds !== undefined) options.serverTimeout = o.serverTimeoutSeconds;
   const args: unknown[] = spec.pathParams.map((p) => sc.call.path?.[p]);
@@ -238,7 +251,10 @@ async function runScenario(sc: Scenario): Promise<Observed> {
         observed.page = await (fn(...args, options) as Promise<CursorPage<{ id: string }>>);
         break;
       case "iterate":
-        for await (const item of fn(...args, options) as AsyncIterable<{ id?: unknown }>) observed.items.push(item);
+        for await (const item of fn(...args, options) as AsyncIterable<{ id?: unknown }>) {
+          observed.items.push(item);
+          if (sc.call.take !== undefined && observed.items.length >= sc.call.take) break;
+        }
         break;
       case "enqueue": {
         const handle = await (fn(...args, { ...options, async: true }) as Promise<RequestHandle<unknown>>);
@@ -289,7 +305,7 @@ function checkOutcome(sc: Scenario, observed: Observed): void {
 
 describe("scenarios", () => {
   for (const sc of fixtures.scenarios) {
-    test(sc.name, async () => {
+    test(sc.name, { skip: sc.only !== undefined && !sc.only.includes("node") }, async () => {
       const reset = await fetch(`${baseUrl}/_control/reset/${sc.name}`, { method: "POST" });
       assert.equal(reset.status, 204);
       const observed = await runScenario(sc);

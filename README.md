@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.1.1**. To pin it exactly:
+The current version is **0.2.0**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.1.1
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.1.1
-yarn add @desktopaccountingapi/quickbooks-desktop@0.1.1
-bun add @desktopaccountingapi/quickbooks-desktop@0.1.1
+npm install @desktopaccountingapi/quickbooks-desktop@0.2.0
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.2.0
+yarn add @desktopaccountingapi/quickbooks-desktop@0.2.0
+bun add @desktopaccountingapi/quickbooks-desktop@0.2.0
 ```
 
 ## Requirements
@@ -89,7 +89,7 @@ A QuickBooks call without an end user throws `DaapiError` before anything is sen
 
 ### List records with auto-pagination
 
-`for await` walks every page. The SDK requests the next page while you process the current one, so slow loop bodies stay inside the QuickBooks cursor's idle window.
+`for await` walks every page. The next page is requested only when the loop needs it, so a loop that stops early never runs an extra QuickBooks query. If you hold a page for more than 2 seconds, the SDK requests the next one in the background, so slow loop bodies stay inside the QuickBooks cursor's idle window.
 
 ```ts
 for await (const customer of client.qbd.customers.list({ limit: 100, updatedAfter: "2026-01-01" })) {
@@ -230,20 +230,24 @@ const patient = new DesktopAccountingApi({ timeout: 30_000, maxRetries: 4, serve
 await patient.qbd.invoices.retrieve("7-1700000000", { endUserId: "eu_01j9x4m6v4c8k2t7q0r5s3w1zb", maxRetries: 0 });
 ```
 
-`timeout` is the client's limit per HTTP attempt in milliseconds; `serverTimeout` is how long the API waits for QuickBooks, in seconds. Reads and writes retry only when it is safe; see [Retries and idempotency](#retries-and-idempotency) and [Timeouts](#timeouts).
+`timeout` is the client's limit per HTTP attempt in milliseconds; `totalTimeout` caps a whole call including retries; `serverTimeout` is how long the API waits for QuickBooks, in seconds. Reads and writes retry only when it is safe; see [Retries and idempotency](#retries-and-idempotency) and [Timeouts](#timeouts).
 
 ## Configuration
 
 | Option | Environment variable | Default | Meaning |
 | --- | --- | --- | --- |
 | `apiKey` | `DAAPI_SECRET_KEY` | none (required) | Secret key `sk_live_...` or `sk_test_...`. Checked locally (format and checksum) before any request; an invalid key throws `DaapiError`. |
-| `baseUrl` | `DAAPI_BASE_URL` | `https://api.desktopaccountingapi.com` | API host without `/v1`. May include a path. |
+| `baseUrl` (or `baseURL`) | `DAAPI_BASE_URL` | `https://api.desktopaccountingapi.com` | API host. May include a path. A trailing `/v1` is removed, so `https://api.desktopaccountingapi.com/v1` works too. |
 | `endUserId` | | none | Default end user for QuickBooks Desktop operations. |
-| `timeout` | | `100000` | Client-side timeout per HTTP attempt, in milliseconds. Also the total time the SDK waits for a pending request (see [Timeouts](#timeouts)). |
+| `timeout` | | `100000` | Client-side timeout of each HTTP attempt, in milliseconds. Each retry gets a fresh timeout. Without `totalTimeout`, also the time the SDK waits for a pending request (see [Timeouts](#timeouts)). |
+| `totalTimeout` | | none | Time budget of a whole call in milliseconds: attempts, retry backoff and the wait for a pending request. |
 | `maxRetries` | | `2` | Retries after network errors, 429 and retryable 5xx responses. `0` disables retries. |
 | `serverTimeout` | | server default | `Daapi-Timeout-Seconds` (1-300) on operations that accept it: how long the API waits for QuickBooks before answering `504`. |
+| `defaultHeaders` | | none | Headers sent with every request. The headers the SDK manages (`Authorization`, `Accept`, `Content-Type`, `User-Agent`, `Daapi-End-User-Id`, `Idempotency-Key`, `Daapi-Timeout-Seconds`, `Prefer`) are never taken from here. |
 | `fetch` | | `globalThis.fetch` | Custom transport: `(url, init) => Promise<Response>`. Use it for proxies, instrumentation or tests. |
-| `logger` | | none | `{ debug(message, fields), warn(message, fields) }`. Receives method, path, status, request ID, attempt and duration. Never receives the API key, headers or bodies. |
+| `fetchOptions` | | none | Extra `RequestInit` options for every `fetch` call, for example an undici `dispatcher` for a proxy. The SDK sets `method`, `headers`, `body` and `signal`. |
+| `logger` | | none | `{ debug(message, fields), warn(message, fields) }`, optionally `info` and `error`; `console` fits. Receives method, path, status, request ID, attempt and duration. Never receives the API key, headers or bodies. |
+| `logLevel` | `DAAPI_LOG` | `debug` with a logger, else off | `debug`, `info`, `warn`, `error` or `off`. With a level and no `logger`, the SDK logs to `console`. |
 
 Every method takes per-call options as its last argument:
 
@@ -252,8 +256,10 @@ const abortController = new AbortController();
 await client.qbd.invoices.retrieve("7-1700000000", {
   endUserId: "eu_01j9x4m6v4c8k2t7q0r5s3w1ze", // end user for this call
   timeout: 30_000, // client-side timeout (ms)
+  totalTimeout: 60_000, // the whole call, retries included (ms)
   maxRetries: 0,
   serverTimeout: 30, // Daapi-Timeout-Seconds
+  headers: { "X-Trace-Id": "order-8814" }, // extra headers for this call
   signal: abortController.signal,
 });
 ```
@@ -292,7 +298,7 @@ const all = await client.qbd.customers.list().listAll();
 console.log(all.length);
 ```
 
-Continuation requests send only `cursor` (and your `limit`). A network error on a continuation retries the same cursor, which returns the same page again.
+Continuation requests send only `cursor` (and your `limit`). The next page is requested only when the iteration reaches it, so `break`ing out of a loop never sends an extra QuickBooks query. While `for await` hands you items, a page held for more than 2 seconds makes the SDK request the next page in the background, which keeps slow loops inside the cursor's idle window. `pages()` requests each page when you ask for it; `listAll()` always requests the next page as soon as a page arrives. A network error on a continuation retries the same cursor, which returns the same page again.
 
 A QuickBooks cursor lives only as long as its QuickBooks session. When it expires the iteration throws `CursorExpiredError` and does not restart the query, because a restart can duplicate or miss records that changed in between. The error tells you how far you got:
 
@@ -322,8 +328,11 @@ Every error extends `DaapiError`:
 | `InvalidRequestError`, `AuthenticationError`, `PermissionError`, `BillingError`, `RateLimitError`, `IntegrationConnectionError`, `IntegrationError`, `OutcomeUnknownError`, `InternalError` | One subclass of `ApiError` per error `type`. |
 | `CursorExpiredError` | `InvalidRequestError` for an expired cursor, with progress fields. |
 | `ApiConnectionError`, `ApiTimeoutError` | No response arrived (connection failure or client timeout) after all retries. |
+| `ApiUserAbortError` | Your `signal` aborted the call. |
 | `RequestPendingError` | The request is still running in QuickBooks when the client timeout ends. It has `requestId`. |
 | `WebhookVerificationError` | Webhook signature, timestamp or payload check failed. |
+
+The Conductor names work too (see [Porting from Conductor](#porting-from-conductor)): `ConductorError`, `APIError`, `APIConnectionError`, `APIConnectionTimeoutError`, `APIUserAbortError` and `PermissionDeniedError` are the classes above, and `BadRequestError` (400), `NotFoundError` (404), `ConflictError` (409), `UnprocessableEntityError` (422) and `InternalServerError` (5xx) match any `ApiError` with that HTTP status in an `instanceof` check. Every class is also a static property of the client class (`DesktopAccountingApi.APIError`).
 
 `ApiError` exposes every field of the error object: `status` (HTTP status), `type`, `code`, `message`, `userFacingMessage`, `httpStatusCode`, `integrationCode`, `requestId`, `errorCause` (the error object's `cause` field; `Error.cause` stays the JavaScript error chain), `fixes` (`{ actor, action }[]`), `docsUrl`, `retryable`, `outcome`, `param`, `details`, and the response `headers`. `ErrorCode` and `ErrorType` hold every code and type in the contract:
 
@@ -357,12 +366,13 @@ It never retries when the response says `Daapi-Should-Retry: false`, when the er
 
 ## Timeouts
 
-There are two timeouts:
+There are three timeouts:
 
-- `timeout` (client, milliseconds, default 100 000) limits each HTTP attempt.
+- `timeout` (client, milliseconds, default 100 000) limits each HTTP attempt. A retry starts a new attempt with a fresh timeout, so with retries a call can take longer than `timeout`.
+- `totalTimeout` (client, milliseconds, no default) limits the whole call: every attempt, the waits between retries, and the wait for a pending request. An attempt still running when it ends is cut off (`ApiTimeoutError`), and no retry starts that could not finish in time.
 - `serverTimeout` (server, seconds) is how long the API waits for QuickBooks before it answers. The server default is 90 seconds (60 for the health check).
 
-If QuickBooks is still working when the server timeout ends, the API answers `504 QBD_REQUEST_TIMEOUT` with the request ID. The SDK does not resubmit. It long-polls `GET /v1/requests/{id}` until the call's client timeout (measured from the start of the call) and then returns the typed result, throws the request's typed error, or throws `RequestPendingError` with `requestId`. Check the request later:
+If QuickBooks is still working when the server timeout ends, the API answers `504 QBD_REQUEST_TIMEOUT` with the request ID. The SDK does not resubmit. It long-polls `GET /v1/requests/{id}` until the call's deadline (`totalTimeout`, else `timeout`, measured from the start of the call) and then returns the typed result, throws the request's typed error, or throws `RequestPendingError` with `requestId`. Check the request later:
 
 ```ts
 import { RequestPendingError } from "@desktopaccountingapi/quickbooks-desktop";
@@ -422,13 +432,85 @@ console.log(json, xml);
 
 Passthrough is a write when any message is not a query, so it always sends an idempotency key.
 
+## Porting from Conductor
+
+Code written for `conductor-node` runs on this SDK with two edits: the import and the API key. The resource tree, method names, parameter names and response fields are the same, and the Conductor names of the options and error classes are accepted.
+
+```ts harness=none
+// Before (conductor-node):
+//   import Conductor from "conductor-node";
+//   const conductor = new Conductor({ apiKey: process.env["CONDUCTOR_SECRET_KEY"] });
+import Conductor from "@desktopaccountingapi/quickbooks-desktop";
+
+const conductor = new Conductor({ apiKey: process.env["DAAPI_SECRET_KEY"] });
+
+// Everything below is unchanged Conductor code.
+const endUserId = "eu_01j9x4m6v4c8k2t7q0r5s3w1zb";
+await conductor.qbd.healthCheck({ conductorEndUserId: endUserId });
+for await (const invoice of conductor.qbd.invoices.list({ conductorEndUserId: endUserId, limit: 50 })) {
+  console.log(invoice.refNumber, invoice.subtotal);
+}
+const customer = await conductor.qbd.customers.create({ conductorEndUserId: endUserId, name: "Acme Supply" });
+const page = await conductor.qbd.invoices.list({ conductorEndUserId: endUserId, customerIds: [customer.id] });
+console.log(page.data.length, page.nextCursor);
+```
+
+Errors keep Conductor's class names and fields, including the `err.error.error` unwrapping from Conductor's documentation:
+
+```ts harness=none
+import Conductor, { NotFoundError } from "@desktopaccountingapi/quickbooks-desktop";
+
+const conductor = new Conductor({ apiKey: process.env["DAAPI_SECRET_KEY"] });
+try {
+  await conductor.qbd.invoices.retrieve("7-1700000000", { conductorEndUserId: "eu_01j9x4m6v4c8k2t7q0r5s3w1zb" });
+} catch (err) {
+  if (err instanceof NotFoundError) {
+    console.log("No such invoice");
+  } else if (err instanceof Conductor.APIError) {
+    const conductorError = err.error?.error; // the same object as err.error
+    console.log(err.status, conductorError?.code, conductorError?.userFacingMessage, conductorError?.requestId);
+    // Our richer fields are on the error itself.
+    console.log(err.type, err.code, err.integrationCode, err.httpStatusCode, err.errorCause, err.fixes, err.docsUrl, err.outcome, err.retryable);
+  } else {
+    throw err;
+  }
+}
+```
+
+Client options keep their Conductor names:
+
+```ts harness=none
+import Conductor from "@desktopaccountingapi/quickbooks-desktop";
+
+const conductor = new Conductor({
+  apiKey: process.env["DAAPI_SECRET_KEY"],
+  baseURL: "https://api.desktopaccountingapi.com/v1", // a trailing /v1 is fine
+  timeout: 120_000, // per attempt, as in Conductor
+  maxRetries: 2,
+  defaultHeaders: { "X-Trace-Id": "billing-sync" },
+  fetchOptions: { keepalive: true },
+  logLevel: "warn", // or DAAPI_LOG=warn; logs to console unless you pass a logger
+});
+console.log(conductor.baseUrl);
+```
+
+What to change by hand:
+
+- **API key and base URL.** `DAAPI_SECRET_KEY` (`sk_test_...`, `sk_live_...`) instead of `CONDUCTOR_SECRET_KEY`. The default base URL is ours; a Conductor base URL in `CONDUCTOR_BASE_URL` is not read.
+- **End-user IDs.** Create end users here (`eu_...`); Conductor's `end_usr_...` IDs do not exist in this API.
+- **Pages.** A page is plain data (`data`, `nextCursor`, `hasMore`, `remainingCount`, `cursorExpiresAt`). Replace `page.hasNextPage()` / `page.getNextPage()` loops with `for await` over the list or `list(...).pages()`.
+- **Status error classes.** `NotFoundError`, `BadRequestError` and the other status classes match in `instanceof`, but the class an error is created with is the one for its error `type` (for example `InvalidRequestError`), so `err.name` and `err.constructor` differ from Conductor's. `APIConnectionError` is not a subclass of `APIError` here; catch `ConductorError` (`DaapiError`) to cover both.
+- **Retries.** Writes always carry an `Idempotency-Key`, and only safe failures are retried (see [Retries and idempotency](#retries-and-idempotency)); Conductor's SDK retried 408 and 409 too. `defaultQuery` is not supported.
+
+The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migrating-from-conductor/) covers the API-level differences.
+
 ## Versioning and changelog
 
 - The package follows [semantic versioning](https://semver.org/). Only a major version removes or renames anything in the SDK's public API.
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The API is versioned in its path (`/v1`). Within `v1` the API only adds operations, fields, enum values and error codes, and the SDK tolerates all of them, so older SDK versions keep working.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `1cc3058cecb5...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `6f5ac28d7c33...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 

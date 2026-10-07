@@ -9,11 +9,15 @@ export { VERSION } from "./version.ts";
 
 export {
   BaseClient,
+  normalizeBaseUrl,
   settleRequest,
   type AsyncRequestOptions,
   type ClientOptions,
+  type ConductorEndUserParam,
   type Fetch,
+  type HeaderMap,
   type Logger,
+  type LogLevel,
   type RequestOptions,
   type SyncRequestOptions,
 } from "./core/client.ts";
@@ -24,6 +28,7 @@ export {
   ApiConnectionError,
   ApiError,
   ApiTimeoutError,
+  ApiUserAbortError,
   AuthenticationError,
   BillingError,
   CursorExpiredError,
@@ -39,6 +44,20 @@ export {
   WebhookVerificationError,
   type CursorProgress,
   type ErrorBody,
+} from "./core/errors.ts";
+// Conductor-compatible names (conductor-node), so ported imports and `instanceof` checks keep working.
+export {
+  ApiConnectionError as APIConnectionError,
+  ApiError as APIError,
+  ApiTimeoutError as APIConnectionTimeoutError,
+  ApiUserAbortError as APIUserAbortError,
+  BadRequestError,
+  ConflictError,
+  DaapiError as ConductorError,
+  InternalServerError,
+  NotFoundError,
+  PermissionError as PermissionDeniedError,
+  UnprocessableEntityError,
 } from "./core/errors.ts";
 export {
   signWebhook,
