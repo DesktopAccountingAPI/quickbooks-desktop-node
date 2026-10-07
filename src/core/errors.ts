@@ -6,8 +6,16 @@
 // │  ├─ AuthenticationError, PermissionError, BillingError, RateLimitError
 // │  ├─ IntegrationConnectionError, IntegrationError, OutcomeUnknownError, InternalError
 // ├─ ApiConnectionError      no response (network failure) ── ApiTimeoutError
+// ├─ ApiUserAbortError       the caller's AbortSignal fired
 // ├─ RequestPendingError     the request is still running when the client timeout ends
 // └─ WebhookVerificationError
+//
+// Conductor-compatible names (conductor-node): ConductorError = DaapiError, APIError = ApiError,
+// APIConnectionError, APIConnectionTimeoutError, APIUserAbortError, PermissionDeniedError, and the
+// status-matching classes BadRequestError (400), NotFoundError (404), ConflictError (409),
+// UnprocessableEntityError (422) and InternalServerError (5xx). The status classes match any
+// ApiError with that HTTP status in `instanceof` checks; the thrown class stays the one for the
+// error's `type`.
 
 import type { ErrorCode, ErrorFix, ErrorType, Request } from "../generated/models.ts";
 
@@ -21,6 +29,11 @@ export class DaapiError extends Error {
 
 /** The error object of an API error response (`{ "error": { ... } }`) or of a failed request resource. */
 export interface ErrorBody {
+  /**
+   * The same error object again (`err.error.error === err.error`), so code written for
+   * `conductor-node`, which unwraps `err.error.error`, keeps working. Not serialized.
+   */
+  readonly error?: ErrorBody;
   type?: string | null;
   code?: string | null;
   message?: string | null;
@@ -71,13 +84,16 @@ export class ApiError extends DaapiError {
   readonly details: Record<string, unknown>;
   /** Response headers. Empty for errors built from a request resource. */
   readonly headers: Headers;
-  /** The error object as received, or undefined when the body was not a JSON error. */
+  /**
+   * The error object as received, or undefined when the body was not a JSON error.
+   * `err.error.error` is the same object, as in `conductor-node`.
+   */
   readonly error: ErrorBody | undefined;
 
   constructor(status: number | null, body: ErrorBody | undefined, headers: Headers = new Headers(), message?: string) {
     super(message ?? body?.message ?? `HTTP ${status ?? "error"}`);
     this.status = status;
-    this.error = body;
+    this.error = body === undefined ? undefined : selfAliased(body);
     this.headers = headers;
     this.type = body?.type ?? null;
     this.code = body?.code ?? null;
@@ -93,6 +109,14 @@ export class ApiError extends DaapiError {
     this.param = body?.param ?? null;
     this.details = body?.details ?? {};
   }
+}
+
+/** Copy of an error object whose non-enumerable `error` property points to itself. */
+function selfAliased(body: ErrorBody): ErrorBody {
+  if (body.error === body) return body;
+  const copy: ErrorBody = { ...body };
+  Object.defineProperty(copy, "error", { value: copy, enumerable: false });
+  return copy;
 }
 
 export class InvalidRequestError extends ApiError {}
@@ -149,8 +173,53 @@ export class CursorExpiredError extends InvalidRequestError {
 /** No response arrived: connection failure, reset, dropped connection or client-side timeout. */
 export class ApiConnectionError extends DaapiError {}
 
-/** The client-side timeout ended before a response arrived. */
+/** The client-side timeout (per attempt or the call's total timeout) ended before a response arrived. */
 export class ApiTimeoutError extends ApiConnectionError {}
+
+/** The caller aborted the call through its `signal` option. */
+export class ApiUserAbortError extends DaapiError {}
+
+/** HTTP status of an API error: the response status, else the error object's `httpStatusCode`. */
+function statusOf(value: unknown): number | null {
+  if (!(value instanceof ApiError)) return null;
+  return value.status ?? value.httpStatusCode;
+}
+
+/** `instanceof` matches any {@link ApiError} with HTTP status 400 (Conductor's `BadRequestError`). */
+export class BadRequestError extends ApiError {
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return statusOf(value) === 400;
+  }
+}
+
+/** `instanceof` matches any {@link ApiError} with HTTP status 404 (Conductor's `NotFoundError`). */
+export class NotFoundError extends ApiError {
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return statusOf(value) === 404;
+  }
+}
+
+/** `instanceof` matches any {@link ApiError} with HTTP status 409 (Conductor's `ConflictError`). */
+export class ConflictError extends ApiError {
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return statusOf(value) === 409;
+  }
+}
+
+/** `instanceof` matches any {@link ApiError} with HTTP status 422 (Conductor's `UnprocessableEntityError`). */
+export class UnprocessableEntityError extends ApiError {
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return statusOf(value) === 422;
+  }
+}
+
+/** `instanceof` matches any {@link ApiError} with an HTTP status of 500 or more (Conductor's `InternalServerError`). */
+export class InternalServerError extends ApiError {
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    const status = statusOf(value);
+    return status !== null && status >= 500;
+  }
+}
 
 /**
  * The request is still running in QuickBooks when the call's client-side timeout ended
