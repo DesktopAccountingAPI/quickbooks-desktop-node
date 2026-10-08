@@ -456,7 +456,8 @@ export class BaseClient {
       }
       headers.set("Daapi-End-User-Id", endUserId);
     }
-    if (op.write) headers.set("Idempotency-Key", options.idempotencyKey ?? crypto.randomUUID());
+    const idempotencyKey = op.write ? (options.idempotencyKey ?? crypto.randomUUID()) : null;
+    if (idempotencyKey !== null) headers.set("Idempotency-Key", idempotencyKey);
     const serverTimeout = options.serverTimeout ?? this.#o.serverTimeout;
     if (op.serverTimeout && serverTimeout !== undefined) headers.set("Daapi-Timeout-Seconds", String(serverTimeout));
     if (mode === "async") {
@@ -473,13 +474,26 @@ export class BaseClient {
       body = JSON.stringify(input.body);
     }
     const url = this.#o.baseUrl + input.path + buildQuery(input.query);
-    const attempt = await this.#send(op.method, url, input.path, headers, body, send);
+    // Every error of a write carries the key it was sent with, so it can be resent safely.
+    const withKey = <E>(err: E): E => {
+      if (idempotencyKey !== null && err instanceof DaapiError && err.idempotencyKey === null) err.idempotencyKey = idempotencyKey;
+      return err;
+    };
+    let attempt: Attempt;
+    try {
+      attempt = await this.#send(op.method, url, input.path, headers, body, send);
+    } catch (err) {
+      throw withKey(err);
+    }
 
     if ("pendingRequestId" in attempt) {
-      if (mode === "async") throw attempt.error;
-      // 504 QBD_REQUEST_TIMEOUT after the request was sent: never resubmit; long-poll the request until the call's deadline.
-      const done = await this.#waitFor<unknown>(attempt.pendingRequestId, deadline ?? started + timeout, null, send);
-      return { response: done.response, read: async () => done.value };
+      if (mode === "async") throw withKey(attempt.error);
+      // 504 QBD_REQUEST_TIMEOUT after the request was sent: never resubmit; long-poll the request
+      // until the call's deadline (the total timeout, else the attempt timeout, from the call start).
+      const done = await this.#waitFor<unknown>(attempt.pendingRequestId, deadline ?? started + timeout, null, send, { timeoutError: attempt.error, idempotencyKey }).catch((err) => {
+        throw withKey(err);
+      });
+      return { response: done.response, read: async () => done.value, idempotencyKey };
     }
     const { response, release } = attempt;
     const read = async (): Promise<unknown> => {
@@ -488,12 +502,14 @@ export class BaseClient {
         if (mode === "json") return await this.#readJson(response, timeout);
         if (response.status !== 202) throw new DaapiError(`${op.id}: expected 202 Accepted in async mode, got ${response.status}`);
         const request = (await this.#readJson(response, timeout)) as Request;
-        return new RequestHandle<unknown>(request, this.#handleBackend<unknown>(total ?? timeout, send));
+        return new RequestHandle<unknown>(request, this.#handleBackend<unknown>(total ?? timeout, send), idempotencyKey);
+      } catch (err) {
+        throw withKey(err);
       } finally {
         release();
       }
     };
-    return { response, read };
+    return { response, read, idempotencyKey };
   }
 
   /** Default headers, then per-call headers, then the headers the SDK manages. */
@@ -622,12 +638,15 @@ export class BaseClient {
     }
   }
 
-  /** One `GET /v1/requests/{id}` (optionally long-polling). */
-  async #retrieveRequest(id: string, waitSeconds: number | undefined, opts: SendOptions): Promise<{ request: Request; response: Response }> {
+  /**
+   * One `GET /v1/requests/{id}` (optionally long-polling). `deadline` (epoch ms) bounds every
+   * attempt and retry of a long poll, so waiting never outlives the caller's budget.
+   */
+  async #retrieveRequest(id: string, waitSeconds: number | undefined, opts: SendOptions, deadline?: number): Promise<{ request: Request; response: Response }> {
     const path = `/v1/requests/${encodeURIComponent(id)}`;
     const timeout = ((waitSeconds ?? 0) + 10) * 1000;
     const url = this.#o.baseUrl + path + buildQuery({ waitSeconds });
-    const attempt = await this.#send("GET", url, path, this.#baseHeaders("application/json"), undefined, { ...opts, timeout, deadline: undefined });
+    const attempt = await this.#send("GET", url, path, this.#baseHeaders("application/json"), undefined, { ...opts, timeout, deadline });
     if ("pendingRequestId" in attempt) throw attempt.error;
     try {
       const request = (await this.#readJson(attempt.response, timeout)) as Request;
@@ -637,17 +656,38 @@ export class BaseClient {
     }
   }
 
-  /** Long-polls a request until it settles or `deadline` (epoch ms) passes. */
-  async #waitFor<T>(id: string, deadline: number, last: Request | null, opts: SendOptions): Promise<{ value: T; response: Response }> {
+  /**
+   * Long-polls a request until it settles or `deadline` (epoch ms) passes. Settled requests return
+   * their result or throw their own typed error. Anything else that ends the wait (the deadline, or
+   * a poll that failed: 429, 5xx, 404, network, timeout, abort) throws `RequestPendingError` with
+   * the request ID and the idempotency key: a failed poll never surfaces as its own retryable,
+   * `not_applied` error, which would invite a duplicate write (Fable review F-1).
+   */
+  async #waitFor<T>(
+    id: string,
+    deadline: number,
+    last: Request | null,
+    opts: SendOptions,
+    context: { timeoutError?: ApiError | null; idempotencyKey?: string | null } = {},
+  ): Promise<{ value: T; response: Response }> {
     let snapshot = last;
+    const pending = (pollError?: DaapiError) => new RequestPendingError(id, snapshot, { ...context, pollError: pollError ?? null });
     for (;;) {
       const remaining = deadline - Date.now();
-      if (remaining <= 0) throw new RequestPendingError(id, snapshot);
+      if (remaining <= 0) throw pending();
       const waitSeconds = Math.min(60, Math.ceil(remaining / 1000));
-      const { request, response } = await this.#retrieveRequest(id, waitSeconds, opts);
-      snapshot = request;
-      const settled = settleRequest<T>(request);
-      if (settled) return { value: settled.value, response };
+      let polled: { request: Request; response: Response };
+      try {
+        polled = await this.#retrieveRequest(id, waitSeconds, opts, deadline);
+      } catch (err) {
+        throw pending(err instanceof DaapiError ? err : new DaapiError(String(err), { cause: err }));
+      }
+      snapshot = polled.request;
+      // An answer that arrives after the deadline is not returned, settled or not: the caller's
+      // budget is spent (codex re-review #15). The snapshot carries the status it saw.
+      if (Date.now() > deadline) throw pending();
+      const settled = settleRequest<T>(polled.request);
+      if (settled) return { value: settled.value, response: polled.response };
     }
   }
 
@@ -655,7 +695,7 @@ export class BaseClient {
     return {
       defaultTimeout: timeout,
       retrieve: async (id) => (await this.#retrieveRequest(id, undefined, opts)).request,
-      waitFor: async (id, deadline, last) => (await this.#waitFor<R>(id, deadline, last, opts)).value,
+      waitFor: async (id, deadline, last, idempotencyKey) => (await this.#waitFor<R>(id, deadline, last, opts, { idempotencyKey })).value,
       settle: (request) => settleRequest<R>(request),
     };
   }
@@ -700,6 +740,10 @@ function conductorAlias<O extends RequestOptions>(op: OperationSpec, input: Call
 export function settleRequest<T>(request: Request): { value: T } | undefined {
   switch (request.status) {
     case "succeeded":
+      // QuickBooks answered, but the API could not turn the answer into the documented result
+      // (for example QBD_RESPONSE_UNREADABLE with outcome applied): raise that catalog error,
+      // never a null result (codex review #4).
+      if (request.error) throw requestError(request);
       if (request.resultExpired) {
         throw new DaapiError(`Request ${request.id} succeeded, but its result is past the retention period; retrieve the object instead.`);
       }

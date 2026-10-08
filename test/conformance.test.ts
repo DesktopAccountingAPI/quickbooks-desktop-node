@@ -168,9 +168,15 @@ function checkError(err: unknown, expected: Record<string, Json>): void {
   if (expected["class"] === "ApiError") assert.equal((err as object).constructor, ApiError, "an unknown error type must use the base ApiError class");
   for (const [key, value] of Object.entries(expected)) {
     if (key === "class") continue;
+    if (key === "timeoutErrorCode") {
+      assert.equal((err as RequestPendingError).timeoutError?.code ?? null, value, "error.timeoutErrorCode");
+      assert.equal((err as Error).cause, (err as RequestPendingError).timeoutError, "the 504 is the error's cause");
+      continue;
+    }
     const field: string = ERROR_FIELDS[key] ?? key;
     const actual: unknown = (err as unknown as Record<string, unknown>)[field];
-    if (key === "details") subset(actual, value, "error.details");
+    if (key === "idempotencyKey" && value === "$uuid") assert.match(String(actual), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "error.idempotencyKey");
+    else if (key === "details") subset(actual, value, "error.details");
     else assert.deepEqual(toWire(actual), value, `error.${key}`);
   }
 }

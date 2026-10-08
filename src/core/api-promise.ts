@@ -4,6 +4,8 @@
 export interface RawResult<T> {
   response: Response;
   read(): Promise<T>;
+  /** The `Idempotency-Key` sent for a write. */
+  idempotencyKey?: string | null;
 }
 
 /** Parsed result together with the HTTP response it came from. */
@@ -12,6 +14,8 @@ export interface WithResponse<T> {
   response: Response;
   /** `Daapi-Request-Id` of the response. */
   requestId: string | null;
+  /** The `Idempotency-Key` the SDK sent for a write (generated unless you passed one), else null. */
+  idempotencyKey: string | null;
 }
 
 /**
@@ -48,7 +52,7 @@ export class APIPromise<T> implements PromiseLike<T> {
   async withResponse(): Promise<WithResponse<T>> {
     const raw = await this.#raw;
     const data = await this.#data();
-    return { data, response: raw.response, requestId: raw.response.headers.get("daapi-request-id") };
+    return { data, response: raw.response, requestId: raw.response.headers.get("daapi-request-id"), idempotencyKey: raw.idempotencyKey ?? null };
   }
 
   /** @internal Transforms the parsed data, keeping the same response. */
@@ -57,6 +61,7 @@ export class APIPromise<T> implements PromiseLike<T> {
       this.#raw.then((r) => ({
         response: r.response,
         read: async () => transform(await r.read(), r.response),
+        idempotencyKey: r.idempotencyKey ?? null,
       })),
     );
   }
