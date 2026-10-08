@@ -1,6 +1,6 @@
 # API reference
 
-Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `b5774d24bc81`, 275 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
+Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `79b06eb20083`, 275 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
 
 Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (per-call options), `APIPromise<T>` (awaitable with `.withResponse()` and `.asResponse()`), `PagePromise<T>` (cursor lists), `RequestHandle<T>` (async mode).
 

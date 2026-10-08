@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** `qbd.reports.budgetSummary()` now requires `fiscalYear` in its params (TypeScript type `ReportBudgetSummaryParams.fiscalYear: number`). The API always rejected a budget report without it (`400 INVALID_PARAMETER`, `param: "fiscalYear"`), so no working call changes behavior; code that omitted it no longer compiles. Pass the fiscal year, for example `{ reportType: "profit_and_loss_budget_overview", fiscalYear: 2026 }`.
+- `WebhookEventType.CONNECTION_COMPANY_FILE_REMARKED` (`connection.company_file_remarked`): the marker that identifies a connection's company file was created, written back after the file lost it (for example a restored backup) or adopted from the file; `data.reason` is `marker_created`, `marker_restored` or `marker_adopted`.
+- After `504 QBD_REQUEST_TIMEOUT`, any failure while waiting for the request (a poll answered `429`, `5xx` or `404`, a network error, a timeout or an abort) throws `RequestPendingError` with `requestId`, `timeoutError` (the 504, also `cause`), `pollError` and `idempotencyKey`. It never surfaces the poll's own retryable error, which read as "safe to resend" and could duplicate a write. `RequestHandle.wait()` follows the same rule.
+- Waiting for a pending request stays inside the call's deadline (`totalTimeout`, else `timeout`): each poll, retry and backoff is cut off at the deadline.
+- `idempotencyKey` on every error raised for a write (generated or yours), on `withResponse()` results and on `RequestHandle`.
+- A request that succeeded in QuickBooks but whose answer the API could not map (`request.error`, for example `QBD_RESPONSE_UNREADABLE` with outcome `applied`) throws that typed error instead of resolving to `null`.
+- Errors thrown by `RequestHandle.wait()` and `result()` (the request's own `failed`, `canceled` or `outcome_unknown` error, a result error, or `RequestPendingError`) carry the handle's `idempotencyKey`.
+- A poll answer that arrives after the deadline is not returned, even a settled one; the call throws `RequestPendingError` with that snapshot.
+
 ## 0.2.0
 
 Easier porting from Conductor's `conductor-node`; see "Porting from Conductor" in the README.
@@ -12,7 +23,7 @@ Easier porting from Conductor's `conductor-node`; see "Porting from Conductor" i
 
 ## 0.1.0
 
-First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `b5774d24bc81` (API version 1.0.0, 275 operations).
+First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `79b06eb20083` (API version 1.0.0, 275 operations).
 
 - `DesktopAccountingApi` client with the full resource tree: `client.qbd.*` (QuickBooks Desktop), `client.endUsers`, `client.authSessions`, `client.requests`.
 - Typed request and response models; money as decimal strings; open enums pass unknown values through.

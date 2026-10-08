@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.2.1**. To pin it exactly:
+The current version is **0.3.0**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.2.1
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.2.1
-yarn add @desktopaccountingapi/quickbooks-desktop@0.2.1
-bun add @desktopaccountingapi/quickbooks-desktop@0.2.1
+npm install @desktopaccountingapi/quickbooks-desktop@0.3.0
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.3.0
+yarn add @desktopaccountingapi/quickbooks-desktop@0.3.0
+bun add @desktopaccountingapi/quickbooks-desktop@0.3.0
 ```
 
 ## Requirements
@@ -46,19 +46,22 @@ A secret key can read and write every connected company file in its project. Kee
 
 ## Quickstart
 
-Each of your customers is an **end user** (`eu_...`) with one QuickBooks Desktop company file, connected through the Web Connector. Copy an end user ID from the dashboard's **End users** page, then:
+Each of your customers is an **end user** (`eu_...`) with one QuickBooks Desktop company file, connected through the Web Connector. Copy an end user ID from the dashboard's **End users** page and set it as `DAAPI_END_USER_ID` (`export DAAPI_END_USER_ID="eu_..."`), then:
 
 ```ts run=quickstart harness=none
 import { DesktopAccountingApi } from "@desktopaccountingapi/quickbooks-desktop";
 
 // Reads DAAPI_SECRET_KEY. forEndUser sends Daapi-End-User-Id on every QuickBooks call.
-const client = new DesktopAccountingApi().forEndUser("eu_01j9x4m6v4c8k2t7q0r5s3w1zb");
+const client = new DesktopAccountingApi().forEndUser(process.env["DAAPI_END_USER_ID"]!);
 
 const health = await client.qbd.healthCheck();
 console.log(`QuickBooks connection: ${health.status}`);
 
+// The loop fetches further pages as needed (10 invoices per request); stop after the first 10.
+let shown = 0;
 for await (const invoice of client.qbd.invoices.list({ limit: 10 })) {
   console.log(invoice.refNumber, invoice.subtotal); // subtotal is a decimal string, for example "105.50"
+  if (++shown === 10) break;
 }
 ```
 
@@ -149,7 +152,7 @@ A stale revision is a `409` `INTEGRATION_ERROR` with code `QBD_REVISION_NUMBER_S
     "type": "INTEGRATION_ERROR",
     "code": "QBD_REVISION_NUMBER_STALE",
     "message": "The object changed since you read it; revisionNumber is out of date.",
-    "userFacingMessage": "This record was changed by someone else. Reload it and try again.",
+    "userFacingMessage": "This record changed in QuickBooks Desktop after it was loaded. Reload it and try again.",
     "httpStatusCode": 409,
     "integrationCode": "3200",
     "requestId": "req_01j9x4m6v4c8k2t7q0r5s3w1zd",
@@ -300,18 +303,24 @@ console.log(all.length);
 
 Continuation requests send only `cursor` (and your `limit`). The next page is requested only when the iteration reaches it, so `break`ing out of a loop never sends an extra QuickBooks query. While `for await` hands you items, a page held for more than 2 seconds makes the SDK request the next page in the background, which keeps slow loops inside the cursor's idle window. `pages()` requests each page when you ask for it; `listAll()` always requests the next page as soon as a page arrives. A network error on a continuation retries the same cursor, which returns the same page again.
 
-A QuickBooks cursor lives only as long as its QuickBooks session. When it expires the iteration throws `CursorExpiredError` and does not restart the query, because a restart can duplicate or miss records that changed in between. The error tells you how far you got:
+A QuickBooks cursor lives only as long as its QuickBooks session. When it expires the iteration throws `CursorExpiredError` and does not restart the query, because a restart can duplicate or miss records that changed in between. The error tells you how far you got. Restart the same query and skip what you already have. Do not resume from the last record's `updatedAt`: QuickBooks returns records in its own order, not by `updatedAt`, so records you have not read yet can be older than the last one you read. An incremental sync restarts from the `updatedAfter` watermark it saved before the traversal ([pagination guide](https://www.desktopaccountingapi.com/docs/guides/pagination/#recovering-from-cursor_expired)).
 
 ```ts
 import { CursorExpiredError } from "@desktopaccountingapi/quickbooks-desktop";
 
+const saved = new Set<string>();
 try {
-  for await (const customer of client.qbd.customers.list({ limit: 100 })) save(customer);
+  for await (const customer of client.qbd.customers.list({ limit: 100 })) {
+    save(customer);
+    saved.add(customer.id);
+  }
 } catch (err) {
   if (!(err instanceof CursorExpiredError)) throw err;
-  console.log(err.itemsYielded, err.pagesServed, err.lastId, err.lastUpdatedAt, err.reason);
-  // Resume with a watermark and skip IDs you already saved.
-  for await (const customer of client.qbd.customers.list({ limit: 100, updatedAfter: err.lastUpdatedAt ?? undefined })) save(customer);
+  console.log(err.itemsYielded, err.pagesServed, err.lastId, err.lastUpdatedAt, err.reason, err.requestId);
+  // Restart the same query and skip the IDs you already saved.
+  for await (const customer of client.qbd.customers.list({ limit: 100 })) {
+    if (!saved.has(customer.id)) save(customer);
+  }
 }
 ```
 
@@ -354,7 +363,7 @@ Include the `requestId` when you contact support. See the [error handling guide]
 
 ## Retries and idempotency
 
-Every write (create, update, delete, void, passthrough, auth session) sends an `Idempotency-Key`. The SDK generates a UUID once per call and reuses it on every retry of that call, so a retried write cannot create a duplicate. Pass your own key (`{ idempotencyKey }`) to make a write idempotent across processes and restarts.
+Every write (create, update, delete, void, passthrough, auth session) sends an `Idempotency-Key`. The SDK generates a UUID once per call and reuses it on every retry of that call, so a retried write cannot create a duplicate. Pass your own key (`{ idempotencyKey }`) to make a write idempotent across processes and restarts. Every error of a write carries the key it was sent with (`err.idempotencyKey`), and so do `withResponse()` results and request handles, so a write that failed without a definite outcome can be resent safely with the same key.
 
 The SDK retries (up to `maxRetries`, default 2):
 
@@ -372,7 +381,7 @@ There are three timeouts:
 - `totalTimeout` (client, milliseconds, no default) limits the whole call: every attempt, the waits between retries, and the wait for a pending request. An attempt still running when it ends is cut off (`ApiTimeoutError`), and no retry starts that could not finish in time.
 - `serverTimeout` (server, seconds) is how long the API waits for QuickBooks before it answers. The server default is 90 seconds (60 for the health check).
 
-If QuickBooks is still working when the server timeout ends, the API answers `504 QBD_REQUEST_TIMEOUT` with the request ID. The SDK does not resubmit. It long-polls `GET /v1/requests/{id}` until the call's deadline (`totalTimeout`, else `timeout`, measured from the start of the call) and then returns the typed result, throws the request's typed error, or throws `RequestPendingError` with `requestId`. Check the request later:
+If QuickBooks is still working when the server timeout ends, the API answers `504 QBD_REQUEST_TIMEOUT` with the request ID. The SDK does not resubmit. It long-polls `GET /v1/requests/{id}` until the call's deadline (`totalTimeout`, else `timeout`, measured from the start of the call) and then returns the typed result, throws the request's typed error, or throws `RequestPendingError` with `requestId`. It also throws `RequestPendingError`, never the poll's own error, when a poll fails (`429`, `5xx`, `404`, network): that error says nothing about the write. `err.timeoutError` is the original 504 (with `details.diagnosis`) and `err.idempotencyKey` the key the write was sent with; resend only with that key. Check the request later:
 
 ```ts
 import { RequestPendingError } from "@desktopaccountingapi/quickbooks-desktop";
@@ -510,7 +519,7 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The API is versioned in its path (`/v1`). Within `v1` the API only adds operations, fields, enum values and error codes, and the SDK tolerates all of them, so older SDK versions keep working.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `b5774d24bc81...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `79b06eb20083...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 

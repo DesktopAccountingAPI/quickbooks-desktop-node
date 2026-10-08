@@ -21,6 +21,14 @@ import type { ErrorCode, ErrorFix, ErrorType, Request } from "../generated/model
 
 /** Base class of every error the SDK raises. Thrown directly for client-side problems. */
 export class DaapiError extends Error {
+  /**
+   * The `Idempotency-Key` the SDK sent for the write that raised this error (generated once per
+   * call unless you passed `idempotencyKey`), else null. Resend a write whose outcome is
+   * `pending` or `unknown`, or that failed without a response, only with this key: the API then
+   * returns the original request instead of writing twice.
+   */
+  idempotencyKey: string | null = null;
+
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
     this.name = new.target.name;
@@ -222,19 +230,39 @@ export class InternalServerError extends ApiError {
 }
 
 /**
- * The request is still running in QuickBooks when the call's client-side timeout ended
- * (`504 QBD_REQUEST_TIMEOUT` followed by long-polling). It was not resubmitted. Check it later with
- * `client.requests.retrieve(err.requestId)` or wait on it with `client.requests.retrieve(id, { waitSeconds })`.
+ * The request is still running in QuickBooks when the call stopped waiting for it
+ * (`504 QBD_REQUEST_TIMEOUT` followed by long-polling, or `RequestHandle.wait()`). It was not
+ * resubmitted. The SDK raises this error, never the error of a failed poll, whenever it cannot
+ * learn the request's final state: a poll that failed with `429`, `5xx`, `404` or a network error
+ * says nothing about the write. Never resend the write with a new key; check it later with
+ * `client.requests.retrieve(err.requestId, { waitSeconds: 60 })`, or resend it with
+ * `err.idempotencyKey`, which returns the original request.
  */
 export class RequestPendingError extends DaapiError {
   readonly requestId: string;
   /** The last request snapshot seen while polling, if any. */
   readonly request: Request | null;
+  /** The `504 QBD_REQUEST_TIMEOUT` error (with `details.diagnosis`) that started the wait, if any. Also `cause`. */
+  readonly timeoutError: ApiError | null;
+  /** The error of the poll that failed, if waiting ended because a poll failed rather than at the deadline. */
+  readonly pollError: DaapiError | null;
 
-  constructor(requestId: string, request: Request | null) {
-    super(`Request ${requestId} is still ${request?.status ?? "pending"} after the client timeout; it was not resubmitted.`);
+  constructor(
+    requestId: string,
+    request: Request | null,
+    options: { timeoutError?: ApiError | null; pollError?: DaapiError | null; idempotencyKey?: string | null } = {},
+  ) {
+    const why = options.pollError ? `checking it failed (${options.pollError.message})` : "the call's time budget ended";
+    super(
+      `Request ${requestId} is still ${request?.status ?? "pending"}: ${why}. It was not resubmitted; retrieve it with client.requests.retrieve("${requestId}")` +
+        (options.idempotencyKey ? ` or resend it only with Idempotency-Key ${options.idempotencyKey}.` : "."),
+      { cause: options.timeoutError ?? options.pollError ?? undefined },
+    );
     this.requestId = requestId;
     this.request = request;
+    this.timeoutError = options.timeoutError ?? null;
+    this.pollError = options.pollError ?? null;
+    this.idempotencyKey = options.idempotencyKey ?? null;
   }
 }
 
