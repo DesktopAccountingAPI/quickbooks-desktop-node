@@ -23,7 +23,7 @@ Easier porting from Conductor's `conductor-node`; see "Porting from Conductor" i
 
 ## 0.1.0
 
-First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `79b06eb20083` (API version 1.0.0, 275 operations).
+First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `68a0d76d6b51` (API version 1.0.0, 275 operations).
 
 - `DesktopAccountingApi` client with the full resource tree: `client.qbd.*` (QuickBooks Desktop), `client.endUsers`, `client.authSessions`, `client.requests`.
 - Typed request and response models; money as decimal strings; open enums pass unknown values through.
