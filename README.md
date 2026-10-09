@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.4.0**. To pin it exactly:
+The current version is **0.5.0**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.4.0
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.4.0
-yarn add @desktopaccountingapi/quickbooks-desktop@0.4.0
-bun add @desktopaccountingapi/quickbooks-desktop@0.4.0
+npm install @desktopaccountingapi/quickbooks-desktop@0.5.0
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.5.0
+yarn add @desktopaccountingapi/quickbooks-desktop@0.5.0
+bun add @desktopaccountingapi/quickbooks-desktop@0.5.0
 ```
 
 ## Requirements
@@ -303,6 +303,8 @@ console.log(all.length);
 
 Continuation requests send only `cursor` (and your `limit`). The next page is requested only when the iteration reaches it, so `break`ing out of a loop never sends an extra QuickBooks query. While `for await` hands you items, a page held for more than 2 seconds makes the SDK request the next page in the background, which keeps slow loops inside the cursor's idle window. `pages()` requests each page when you ask for it; `listAll()` always requests the next page as soon as a page arrives. A network error on a continuation retries the same cursor, which returns the same page again.
 
+To resume from a page you stored earlier, for example across HTTP requests, pass its `nextCursor` as `cursor`: `await client.qbd.invoices.list({ cursor: savedCursor, limit: 100 })` returns that page, and iterating continues from it. Filters live in the cursor, so pass only the cursor and, if you like, the limit. A QuickBooks cursor expires when it sits idle, so resume soon after you store it.
+
 A QuickBooks cursor lives only as long as its QuickBooks session. When it expires the iteration throws `CursorExpiredError` and does not restart the query, because a restart can duplicate or miss records that changed in between. The error tells you how far you got. Restart the same query and skip what you already have. Do not resume from the last record's `updatedAt`: QuickBooks returns records in its own order, not by `updatedAt`, so records you have not read yet can be older than the last one you read. An incremental sync restarts from the `updatedAfter` watermark it saved before the traversal ([pagination guide](https://www.desktopaccountingapi.com/docs/guides/pagination/#recovering-from-cursor_expired)).
 
 ```ts
@@ -413,7 +415,7 @@ console.log(invoice.id, result.id);
 
 ## Webhooks
 
-Webhooks follow [Standard Webhooks](https://www.standardwebhooks.com/). `verifyWebhook(rawBody, headers, secret)` checks the signature and timestamp and returns the parsed event; no API key is needed. It accepts the secret with or without the `whsec_` prefix, any header case, several signatures during secret rotation, and timestamps within 300 seconds of your clock (`{ toleranceSeconds }` changes that; `{ now }` injects a clock for tests). The same functions are available as `client.webhooks.verify(...)`, `verifyWebhookSignature(...)` (signature only) and `signWebhook(...)` (to sign test events). They use WebCrypto and are therefore async. Delivery is at least once: deduplicate on `event.id`.
+Webhooks follow [Standard Webhooks](https://www.standardwebhooks.com/). `verifyWebhook(rawBody, headers, secret)` checks the signature and timestamp and returns the parsed event; no API key is needed. It accepts the secret with or without the `whsec_` prefix, any header case, several signatures during secret rotation, and timestamps within 300 seconds of your clock (`{ toleranceSeconds }` changes that; `{ now }` injects a clock for tests: a function returning the current time in Unix seconds, such as `() => Math.floor(Date.now() / 1000)`, not `Date.now()` milliseconds). The same functions are available as `client.webhooks.verify(...)`, `verifyWebhookSignature(...)` (signature only) and `signWebhook(...)` (to sign test events). They use WebCrypto and are therefore async. Delivery is at least once: deduplicate on `event.id`.
 
 ## Raw responses
 
@@ -519,7 +521,7 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The API is versioned in its path (`/v1`). Within `v1` the API only adds operations, fields, enum values and error codes, and the SDK tolerates all of them, so older SDK versions keep working.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `68a0d76d6b51...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `1fc5496cc47b...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The webhook `now` option is documented as a function returning Unix seconds (`() => Math.floor(Date.now() / 1000)`), not `Date.now()` milliseconds; milliseconds make every delivery look too old.
+- The README documents resuming a list from a stored `nextCursor` (`list({ cursor: savedCursor })`); the cross-language conformance suite now covers it, and reads that hit the server timeout (`504 QBD_REQUEST_TIMEOUT`, outcome `not_applicable`), which the SDK already long-polled.
+- Response prices, rates and percentages (for example `QbdInvoiceLine.rate`, `QbdSalesOrPurchaseDetail.price`, `ratePercent`) carry the same decimal pattern as their inputs and as amounts; their docs now say so. TypeScript types are unchanged (`string`).
 - **Breaking:** `qbd.reports.budgetSummary()` now requires `fiscalYear` in its params (TypeScript type `ReportBudgetSummaryParams.fiscalYear: number`). The API always rejected a budget report without it (`400 INVALID_PARAMETER`, `param: "fiscalYear"`), so no working call changes behavior; code that omitted it no longer compiles. Pass the fiscal year, for example `{ reportType: "profit_and_loss_budget_overview", fiscalYear: 2026 }`.
 - `WebhookEventType.CONNECTION_COMPANY_FILE_REMARKED` (`connection.company_file_remarked`): the marker that identifies a connection's company file was created, written back after the file lost it (for example a restored backup) or adopted from the file; `data.reason` is `marker_created`, `marker_restored` or `marker_adopted`.
 - After `504 QBD_REQUEST_TIMEOUT`, any failure while waiting for the request (a poll answered `429`, `5xx` or `404`, a network error, a timeout or an abort) throws `RequestPendingError` with `requestId`, `timeoutError` (the 504, also `cause`), `pollError` and `idempotencyKey`. It never surfaces the poll's own retryable error, which read as "safe to resend" and could duplicate a write. `RequestHandle.wait()` follows the same rule.
@@ -23,7 +26,7 @@ Easier porting from Conductor's `conductor-node`; see "Porting from Conductor" i
 
 ## 0.1.0
 
-First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `68a0d76d6b51` (API version 1.0.0, 275 operations).
+First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `1fc5496cc47b` (API version 1.0.0, 275 operations).
 
 - `DesktopAccountingApi` client with the full resource tree: `client.qbd.*` (QuickBooks Desktop), `client.endUsers`, `client.authSessions`, `client.requests`.
 - Typed request and response models; money as decimal strings; open enums pass unknown values through.
