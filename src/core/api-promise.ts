@@ -6,13 +6,20 @@ export interface RawResult<T> {
   read(): Promise<T>;
   /** The `Idempotency-Key` sent for a write. */
   idempotencyKey?: string | null;
+  /** The ID of the request that produced the result when it differs from the response's `Daapi-Request-Id` (a long-polled request). */
+  requestId?: string | null;
 }
 
 /** Parsed result together with the HTTP response it came from. */
 export interface WithResponse<T> {
   data: T;
   response: Response;
-  /** `Daapi-Request-Id` of the response. */
+  /**
+   * The ID of the request that produced the result: the response's `Daapi-Request-Id`, or, after the
+   * SDK long-polled a request that timed out on the server, that request's ID (look it up with
+   * `client.requests.retrieve(requestId)`). The poll's own ID stays in
+   * `response.headers.get("daapi-request-id")`.
+   */
   requestId: string | null;
   /** The `Idempotency-Key` the SDK sent for a write (generated unless you passed one), else null. */
   idempotencyKey: string | null;
@@ -42,7 +49,8 @@ export class APIPromise<T> implements PromiseLike<T> {
   /**
    * The HTTP response without reading its body. Call it instead of awaiting the promise;
    * after the data was parsed the body is already consumed. For a call that long-polled a
-   * pending request, this is the last poll's response.
+   * pending request, this is the last poll's response; `withResponse().requestId` is the ID of
+   * the request that produced the result.
    */
   asResponse(): Promise<Response> {
     return this.#raw.then((r) => r.response);
@@ -52,7 +60,8 @@ export class APIPromise<T> implements PromiseLike<T> {
   async withResponse(): Promise<WithResponse<T>> {
     const raw = await this.#raw;
     const data = await this.#data();
-    return { data, response: raw.response, requestId: raw.response.headers.get("daapi-request-id"), idempotencyKey: raw.idempotencyKey ?? null };
+    const requestId = raw.requestId ?? raw.response.headers.get("daapi-request-id");
+    return { data, response: raw.response, requestId, idempotencyKey: raw.idempotencyKey ?? null };
   }
 
   /** @internal Transforms the parsed data, keeping the same response. */
@@ -62,6 +71,7 @@ export class APIPromise<T> implements PromiseLike<T> {
         response: r.response,
         read: async () => transform(await r.read(), r.response),
         idempotencyKey: r.idempotencyKey ?? null,
+        requestId: r.requestId ?? null,
       })),
     );
   }
