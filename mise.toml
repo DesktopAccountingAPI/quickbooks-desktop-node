@@ -20,8 +20,8 @@ run = [
 [tasks."test:node"]
 description = "After `mise run check`: compiled unit and conformance tests plus the package smoke test on another Node.js version (NODE_TEST_VERSION, default 20)"
 run = [
-  'mise exec "node@${NODE_TEST_VERSION:-20}" -- node scripts/test-dist.mjs',
-  'mise exec "node@${NODE_TEST_VERSION:-20}" -- node scripts/smoke.mjs',
+  'mise exec node@{{ get_env(name="NODE_TEST_VERSION", default="20") }} -- node scripts/test-dist.mjs',
+  'mise exec node@{{ get_env(name="NODE_TEST_VERSION", default="20") }} -- node scripts/smoke.mjs',
 ]
 
 [tasks.publish]

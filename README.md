@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.5.1**. To pin it exactly:
+The current version is **0.5.2**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.5.1
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.5.1
-yarn add @desktopaccountingapi/quickbooks-desktop@0.5.1
-bun add @desktopaccountingapi/quickbooks-desktop@0.5.1
+npm install @desktopaccountingapi/quickbooks-desktop@0.5.2
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.5.2
+yarn add @desktopaccountingapi/quickbooks-desktop@0.5.2
+bun add @desktopaccountingapi/quickbooks-desktop@0.5.2
 ```
 
 ## Requirements
@@ -519,11 +519,11 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 
 ## Versioning and changelog
 
-- The package follows [semantic versioning](https://semver.org/). Only a major version removes or renames anything in the SDK's public API.
+- The package follows [semantic versioning](https://semver.org/). Before 1.0, a minor version may contain breaking changes; they are marked Breaking in the [CHANGELOG](https://github.com/DesktopAccountingAPI/quickbooks-desktop-node/blob/main/CHANGELOG.md).
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The API is versioned in its path (`/v1`). Within `v1` the API only adds operations, fields, enum values and error codes, and the SDK tolerates all of them, so older SDK versions keep working.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `3d102b7bcecb...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `09aa9517f466...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 
