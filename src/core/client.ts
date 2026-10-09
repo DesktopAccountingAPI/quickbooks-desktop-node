@@ -493,7 +493,9 @@ export class BaseClient {
       const done = await this.#waitFor<unknown>(attempt.pendingRequestId, deadline ?? started + timeout, null, send, { timeoutError: attempt.error, idempotencyKey }).catch((err) => {
         throw withKey(err);
       });
-      return { response: done.response, read: async () => done.value, idempotencyKey };
+      // The result belongs to the request that timed out, not to the poll that collected it: report
+      // its ID so it can be looked up (GET /v1/requests/{id}) and quoted to support.
+      return { response: done.response, read: async () => done.value, idempotencyKey, requestId: attempt.pendingRequestId };
     }
     const { response, release } = attempt;
     const read = async (): Promise<unknown> => {
