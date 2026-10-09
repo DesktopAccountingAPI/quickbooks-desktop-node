@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.5.2 (2026-10-09)
+
+- Released in lockstep with the other Desktop Accounting API packages; no entries for this package.
+
 ## 0.5.1 (2026-10-09)
 
 - `withResponse().requestId` after a long-polled call is the ID of the request that produced the result (the 504's `details.requestId`), which `client.requests.retrieve()` finds. It was the last poll's ID, which answers `404`. The poll's own ID stays in `response.headers.get("daapi-request-id")`.
@@ -30,7 +34,15 @@
 - Errors thrown by `RequestHandle.wait()` and `result()` (the request's own `failed`, `canceled` or `outcome_unknown` error, a result error, or `RequestPendingError`) carry the handle's `idempotencyKey`.
 - A poll answer that arrives after the deadline is not returned, even a settled one; the call throws `RequestPendingError` with that snapshot.
 
-## 0.2.0
+## 0.2.1 (2026-10-07)
+
+Generated from API contract sha256 `b5774d24bc81`. Documentation only; no API surface change.
+
+- `updatedAt` and `revisionNumber` descriptions say that QuickBooks changes them at most once per second: an incremental sync should overlap `updatedAfter` and deduplicate by `id` and `revisionNumber`.
+- The fixes for status 3261 (`QBD_INSUFFICIENT_PERMISSION`) name the personal-data checkbox in QuickBooks and what to do when it is gray: send the end user a new setup link and choose "Enable payroll access".
+- Item sites document what QuickBooks returns without Advanced Inventory: an empty list, and `404 QBD_OBJECT_NOT_FOUND` from retrieve, rather than an error.
+
+## 0.2.0 (2026-10-07)
 
 Easier porting from Conductor's `conductor-node`; see "Porting from Conductor" in the README.
 
@@ -40,9 +52,15 @@ Easier porting from Conductor's `conductor-node`; see "Porting from Conductor" i
 - Client options `baseURL` (alias of `baseUrl`), `defaultHeaders`, `fetchOptions`, `logLevel` (and `DAAPI_LOG`) and `totalTimeout`; per-call `headers`, `fetchOptions`, `totalTimeout` and `conductorEndUserId`. A base URL ending in `/v1` no longer produces `/v1/v1/...`.
 - Pagination requests the next page only when the iteration needs it, so a loop that stops early sends no extra QuickBooks query. While iterating items, a page held for more than 2 seconds makes the SDK request the next page in the background; `listAll()` always reads ahead.
 
-## 0.1.0
+## 0.1.1 (2026-10-06)
 
-First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `3d102b7bcecb` (API version 1.0.0, 275 operations).
+Generated from API contract sha256 `1cc3058cecb5`, the same contract as 0.1.0. No API surface change.
+
+- The README is rewritten: install with exact package coordinates, authentication, a quickstart, common workflows, errors, async requests and webhooks, versioning and support. Every code sample in it is compiled against the package before release, and the quickstart runs against a mock server.
+
+## 0.1.0 (2026-10-06)
+
+First release of `@desktopaccountingapi/quickbooks-desktop`, generated from API contract sha256 `1cc3058cecb5` (API version 1.0.0, 275 operations).
 
 - `DesktopAccountingApi` client with the full resource tree: `client.qbd.*` (QuickBooks Desktop), `client.endUsers`, `client.authSessions`, `client.requests`.
 - Typed request and response models; money as decimal strings; open enums pass unknown values through.
