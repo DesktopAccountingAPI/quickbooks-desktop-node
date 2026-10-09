@@ -1,6 +1,6 @@
 {
   "name": "@desktopaccountingapi/quickbooks-desktop",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Node.js and TypeScript SDK for Desktop Accounting API, the REST API for QuickBooks Desktop.",
   "license": "MIT",
   "author": "Desktop Accounting API",
