@@ -55,7 +55,8 @@ interface Scenario {
   };
   call: {
     op: string;
-    kind: "call" | "iterate" | "firstPage" | "withResponse" | "enqueue";
+    kind: "call" | "iterate" | "firstPage" | "withResponse" | "enqueue" | "xml";
+    xml?: string;
     path?: Record<string, string>;
     params?: JsonObject;
     options?: { idempotencyKey?: string; endUserId?: string; conductorEndUserId?: string; timeoutMs?: number; serverTimeoutSeconds?: number };
@@ -64,6 +65,7 @@ interface Scenario {
   };
   outcome: {
     result?: Record<string, Json>;
+    text?: string;
     items?: string[];
     page?: { ids?: string[]; nextCursor?: string | null; hasMore?: boolean; remainingCount?: number | null };
     handle?: { id?: string; status?: string };
@@ -210,6 +212,7 @@ function method(client: DesktopAccountingApi, op: string): AnyMethod {
 
 interface Observed {
   result?: unknown;
+  text?: string;
   items: Array<{ id?: unknown }>;
   page?: CursorPage<{ id: string }>;
   handle?: RequestHandle<unknown>;
@@ -262,6 +265,11 @@ async function runScenario(sc: Scenario): Promise<Observed> {
           if (sc.call.take !== undefined && observed.items.length >= sc.call.take) break;
         }
         break;
+      case "xml": {
+        const xmlFn = method(client, `${sc.call.op}Xml`);
+        observed.text = await (xmlFn(...spec.pathParams.map((p) => sc.call.path?.[p]), sc.call.xml, options) as Promise<string>);
+        break;
+      }
       case "enqueue": {
         const handle = await (fn(...args, { ...options, async: true }) as Promise<RequestHandle<unknown>>);
         observed.handle = handle;
@@ -287,6 +295,7 @@ function checkOutcome(sc: Scenario, observed: Observed): void {
     const wire = toWire(observed.result);
     for (const [path, value] of Object.entries(out.result)) assert.deepEqual(get(wire, path), value, `result.${path}`);
   }
+  if (out.text !== undefined) assert.equal(observed.text, out.text, "text");
   if (out.items) assert.deepEqual(observed.items.map((i) => i.id), out.items, "items");
   if (out.page) {
     const page = observed.page;

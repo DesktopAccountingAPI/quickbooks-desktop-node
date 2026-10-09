@@ -36,7 +36,7 @@ export interface WebhookEvent<D = Record<string, unknown>> {
 export interface WebhookVerifyOptions {
   /** Allowed clock difference in seconds, in both directions. Default 300. */
   toleranceSeconds?: number | undefined;
-  /** Clock override for tests: returns the current time in Unix seconds. */
+  /** Clock override for tests: returns the current time in Unix seconds (`Math.floor(Date.now() / 1000)`), not milliseconds. */
   now?: (() => number) | undefined;
 }
 
