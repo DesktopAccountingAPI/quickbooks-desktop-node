@@ -1,6 +1,6 @@
 # API reference
 
-Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `45acc3e65d06`, 433 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
+Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `f4cd9b5c733e`, 439 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
 
 Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (per-call options), `APIPromise<T>` (awaitable with `.withResponse()` and `.asResponse()`), `PagePromise<T>` (cursor lists), `RequestHandle<T>` (async mode).
 
@@ -9,6 +9,16 @@ Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (p
 | Method | HTTP | Summary |
 | --- | --- | --- |
 | `client.authSessions.create(params: AuthSessionCreateInput, options?): APIPromise<AuthSession>` | `POST /v1/auth-sessions` | Create an auth session. |
+
+## client.changeFeedSubscriptions
+
+| Method | HTTP | Summary |
+| --- | --- | --- |
+| `client.changeFeedSubscriptions.create(params: ChangeFeedSubscriptionCreateInput, options?): APIPromise<ChangeFeedSubscription>` | `POST /v1/change-feed-subscriptions` | Create a change feed subscription. |
+| `client.changeFeedSubscriptions.delete(id: string, options?): APIPromise<ChangeFeedSubscriptionDeleted>` | `DELETE /v1/change-feed-subscriptions/{id}` | Delete a change feed subscription. |
+| `client.changeFeedSubscriptions.list(params?: ChangeFeedSubscriptionListParams, options?): PagePromise<ChangeFeedSubscription>` | `GET /v1/change-feed-subscriptions` | List change feed subscriptions. |
+| `client.changeFeedSubscriptions.retrieve(id: string, options?): APIPromise<ChangeFeedSubscription>` | `GET /v1/change-feed-subscriptions/{id}` | Retrieve a change feed subscription. |
+| `client.changeFeedSubscriptions.update(id: string, params: ChangeFeedSubscriptionUpdateInput, options?): APIPromise<ChangeFeedSubscription>` | `POST /v1/change-feed-subscriptions/{id}` | Update a change feed subscription. |
 
 ## client.endUsers
 
@@ -834,6 +844,7 @@ Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (p
 
 | Method | HTTP | Summary |
 | --- | --- | --- |
+| `client.qbd.batch(params: Omit<BatchInput, "requests"> & { requests: R } & ConductorEndUserParam, options?): APIPromise<BatchFor<R>>` | `POST /v1/quickbooks-desktop/batch` | Run several operations in one round trip. Async mode: `{ async: true }`. |
 | `client.qbd.healthCheck(options?): APIPromise<HealthCheck>` | `GET /v1/quickbooks-desktop/health-check` | Check the QuickBooks Desktop connection. Async mode: `{ async: true }`. |
 
 ## client.requests

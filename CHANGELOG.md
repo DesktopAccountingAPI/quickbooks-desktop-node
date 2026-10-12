@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.0 (2026-10-12)
+
+- New `client.qbd.batch()`: up to 25 typed QuickBooks Desktop operations in one Web Connector round trip. Each member is a `BatchRequestInput` object (`{ operationId, pathParams?, query?, body? }`), and each result is typed by the request at the same position (`BatchResultFor`): `results[0].data` of a `qbd.customers.create` member is a `Customer`. One `Idempotency-Key` covers the batch; a lost response raises `OutcomeUnknownError` with `details.members` and is never retried.
+- A batch whose response was lost and whose create members the API later found in QuickBooks by their `externalId` returns each such member with `data: null` and the record's QuickBooks ID in `recoveredObjectId` (on every batch result: `string | null`), on `client.requests.retrieve()` and on an idempotent replay.
+- New error code `QBD_REQUEST_NOT_PROCESSED` (`ErrorCode.QBD_REQUEST_NOT_PROCESSED`): `409`, not retryable. QuickBooks skipped a batch member because an earlier member failed under `stopOnError` (status 3231).
+- **Breaking (types only):** the credit card request info of receive payments is typed as its own `QbdRequest` interface. It was typed as the platform `Request` (the request resource) by mistake; only code that relied on the wrong fields is affected.
+- Change feed subscriptions: `client.changeFeedSubscriptions.create()`, `.list()`, `.retrieve()`, `.update()` and `.delete()` (`/v1/change-feed-subscriptions`). A subscription polls every connected end user of the project for changed and deleted records of the listed resources and sends `data.changed` webhooks with their IDs. New webhook event type `WebhookEventType.DATA_CHANGED` (`data.changed`). New error code `CHANGE_FEED_SUBSCRIPTION_LIMIT_REACHED` (`422`, not retryable).
+
 ## 0.6.0 (2026-10-12)
 
 - **Breaking:** the list parameters type of `qbd.classes.list` is renamed from `ClasseListParams` to `ClassListParams` (the generator dropped only the final "s" of "classes"). Rename the type in your code; nothing else changes. No other type name was affected.
