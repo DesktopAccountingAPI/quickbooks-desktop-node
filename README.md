@@ -2,7 +2,7 @@
 
 The TypeScript and JavaScript client for [Desktop Accounting API](https://www.desktopaccountingapi.com/), a REST API for QuickBooks Desktop and QuickBooks Enterprise. Your server makes typed calls such as `client.qbd.invoices.create(...)`, and Desktop Accounting API delivers them to your customer's company file through the QuickBooks Web Connector.
 
-- Covers all 275 operations of API 1.0.0: QuickBooks objects and reports (`client.qbd`), end users, auth sessions, request tracking, qbXML passthrough and webhook verification.
+- Covers all 433 operations of API 1.0.0: QuickBooks objects and reports (`client.qbd`), end users, auth sessions, request tracking, qbXML passthrough and webhook verification.
 - Request and response types for every object, typed errors for every error code, and exact decimal strings for money.
 - Every write carries an idempotency key, retries happen only where they cannot duplicate data, and an expired QuickBooks cursor never restarts a list silently.
 - ES module and CommonJS builds with type declarations and no runtime dependencies. Runs in Node.js, Bun, Deno and Cloudflare Workers.
@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.5.4**. To pin it exactly:
+The current version is **0.6.0**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.5.4
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.5.4
-yarn add @desktopaccountingapi/quickbooks-desktop@0.5.4
-bun add @desktopaccountingapi/quickbooks-desktop@0.5.4
+npm install @desktopaccountingapi/quickbooks-desktop@0.6.0
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.6.0
+yarn add @desktopaccountingapi/quickbooks-desktop@0.6.0
+bun add @desktopaccountingapi/quickbooks-desktop@0.6.0
 ```
 
 ## Requirements
@@ -301,7 +301,7 @@ const all = await client.qbd.customers.list().listAll();
 console.log(all.length);
 ```
 
-Continuation requests send only `cursor` (and your `limit`). The next page is requested only when the iteration reaches it, so `break`ing out of a loop never sends an extra QuickBooks query. While `for await` hands you items, a page held for more than 2 seconds makes the SDK request the next page in the background, which keeps slow loops inside the cursor's idle window. `pages()` requests each page when you ask for it; `listAll()` always requests the next page as soon as a page arrives. A network error on a continuation retries the same cursor, which returns the same page again.
+Continuation requests send only `cursor` (and your `limit`). The next page is requested only when the iteration reaches it, so `break`ing out of a loop never sends an extra QuickBooks query. Breaking out early is also safe for the end user's QuickBooks: the API releases the cursor you leave behind by stopping its QuickBooks iterator once the cursor idles out (about 10 seconds after its last page) or when a fourth cursor list starts for the same end user, so abandoned lists never use up QuickBooks' open-iterator limit. Cursor lifetime: about 10 seconds idle after each page (`cursorExpiresAt`), at most 3 open cursor lists per end user, and never longer than the QuickBooks session that started it; continuing an expired cursor raises `CursorExpiredError`, never partial data. While `for await` hands you items, a page held for more than 2 seconds makes the SDK request the next page in the background, which keeps slow loops inside the cursor's idle window. `pages()` requests each page when you ask for it; `listAll()` always requests the next page as soon as a page arrives. A network error on a continuation retries the same cursor, which returns the same page again.
 
 To resume from a page you stored earlier, for example across HTTP requests, pass its `nextCursor` as `cursor`: `await client.qbd.invoices.list({ cursor: savedCursor, limit: 100 })` returns that page, and iterating continues from it. Filters live in the cursor, so pass only the cursor and, if you like, the limit. A QuickBooks cursor expires when it sits idle, so resume soon after you store it.
 
@@ -523,7 +523,7 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The API is versioned in its path (`/v1`). Within `v1` the API only adds operations, fields, enum values and error codes, and the SDK tolerates all of them, so older SDK versions keep working.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `d4adaec794b6...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `45acc3e65d06...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 

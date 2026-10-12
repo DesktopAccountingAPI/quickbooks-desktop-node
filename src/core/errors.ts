@@ -155,8 +155,10 @@ export interface CursorProgress {
 /**
  * `410 CURSOR_EXPIRED`: the QuickBooks iterator behind a cursor ended. The SDK never restarts the
  * query on its own, because restarting can duplicate or skip records that changed meanwhile.
- * To resume, start a new list call with `updatedAfter: err.lastUpdatedAt` (and your original
- * filters) and skip IDs you already processed.
+ * Restart the same query and skip IDs you already processed. Do not resume from `err.lastUpdatedAt`:
+ * QuickBooks returns records in its own order, not by `updatedAt`, so records not yet read can be
+ * older. An incremental sync keeps the `updatedAfter` watermark of its previous completed sync until
+ * the whole traversal finishes (pagination guide, "Recovering from CURSOR_EXPIRED").
  */
 export class CursorExpiredError extends InvalidRequestError {
   readonly itemsYielded: number;
