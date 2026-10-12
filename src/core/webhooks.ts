@@ -16,6 +16,7 @@ export const WebhookEventType = {
   CONNECTION_SETUP_COMPLETED: "connection.setup_completed",
   CONNECTION_STATUS_CHANGED: "connection.status_changed",
   CONNECTION_COMPANY_FILE_REMARKED: "connection.company_file_remarked",
+  DATA_CHANGED: "data.changed",
   WEBHOOK_TEST: "webhook.test",
 } as const;
 
