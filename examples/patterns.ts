@@ -27,7 +27,7 @@ try {
   }
 } catch (err) {
   if (err instanceof CursorExpiredError) {
-    console.log(`cursor expired after ${err.itemsYielded} items; resume with updatedAfter=${err.lastUpdatedAt}`);
+    console.log(`cursor expired after ${err.itemsYielded} items; restart the same query and skip IDs already processed`);
   } else throw err;
 }
 

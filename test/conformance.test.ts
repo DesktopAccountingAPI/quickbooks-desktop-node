@@ -295,6 +295,9 @@ function checkOutcome(sc: Scenario, observed: Observed): void {
     const wire = toWire(observed.result);
     for (const [path, value] of Object.entries(out.result)) assert.deepEqual(get(wire, path), value, `result.${path}`);
   }
+  // `variant` / `itemVariants` name the SDK class of a union result. The Node.js SDK returns the
+  // JSON as is (a TypeScript union type), so there is no class to check; `result` and `items` still
+  // check that unknown kinds pass through.
   if (out.text !== undefined) assert.equal(observed.text, out.text, "text");
   if (out.items) assert.deepEqual(observed.items.map((i) => i.id), out.items, "items");
   if (out.page) {
