@@ -1,6 +1,6 @@
 # API reference
 
-Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `f4cd9b5c733e`, 439 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
+Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `149fc7b0599d`, 438 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
 
 Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (per-call options), `APIPromise<T>` (awaitable with `.withResponse()` and `.asResponse()`), `PagePromise<T>` (cursor lists), `RequestHandle<T>` (async mode).
 
@@ -236,9 +236,9 @@ Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (p
 | Method | HTTP | Summary |
 | --- | --- | --- |
 | `client.qbd.customFieldDefinitions.create(params: CustomFieldDefinitionCreateInput & ConductorEndUserParam, options?): APIPromise<CustomFieldDefinition>` | `POST /v1/quickbooks-desktop/custom-field-definitions` | Create a custom field definition. Async mode: `{ async: true }`. |
-| `client.qbd.customFieldDefinitions.delete(name: string, params: CustomFieldDefinitionDeleteParams & ConductorEndUserParam, options?): APIPromise<DeletedCustomFieldDefinition>` | `DELETE /v1/quickbooks-desktop/custom-field-definitions/{name}` | Request deletion of a private custom field definition. Async mode: `{ async: true }`. |
+| `client.qbd.customFieldDefinitions.delete(definitionName: string, params: CustomFieldDefinitionDeleteParams & ConductorEndUserParam, options?): APIPromise<CustomFieldDefinitionDeleted>` | `DELETE /v1/quickbooks-desktop/custom-field-definitions/{definitionName}` | Request deletion of a private custom field definition. Async mode: `{ async: true }`. |
 | `client.qbd.customFieldDefinitions.list(params?: CustomFieldDefinitionListParams & ConductorEndUserParam, options?): APIPromise<CustomFieldDefinitionList>` | `GET /v1/quickbooks-desktop/custom-field-definitions` | List custom field definitions. Async mode: `{ async: true }`. |
-| `client.qbd.customFieldDefinitions.update(name: string, params: CustomFieldDefinitionUpdateInput & ConductorEndUserParam, options?): APIPromise<CustomFieldDefinition>` | `POST /v1/quickbooks-desktop/custom-field-definitions/{name}` | Update a custom field definition. Async mode: `{ async: true }`. |
+| `client.qbd.customFieldDefinitions.update(definitionName: string, params: CustomFieldDefinitionUpdateInput & ConductorEndUserParam, options?): APIPromise<CustomFieldDefinition>` | `POST /v1/quickbooks-desktop/custom-field-definitions/{definitionName}` | Update a custom field definition. Async mode: `{ async: true }`. |
 
 ## client.qbd.dateDrivenTerms
 
@@ -758,7 +758,7 @@ Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (p
 | --- | --- | --- |
 | `client.qbd.transactions.list(params?: TransactionListParams & ConductorEndUserParam, options?): PagePromise<Transaction>` | `GET /v1/quickbooks-desktop/transactions` | List transactions. Async mode: `{ async: true }`. |
 | `client.qbd.transactions.retrieve(id: string, options?): APIPromise<Transaction>` | `GET /v1/quickbooks-desktop/transactions/{id}` | Retrieve a transaction. Async mode: `{ async: true }`. |
-| `client.qbd.transactions.updateClearedStatus(id: string, params: ClearedStatusUpdateInput & ConductorEndUserParam, options?): APIPromise<ClearedStatus>` | `POST /v1/quickbooks-desktop/transactions/{id}/cleared-status` | Update the cleared status of a transaction. Async mode: `{ async: true }`. |
+| `client.qbd.transactions.updateClearedStatus(id: string, params: ClearedStatusUpdateInput & ConductorEndUserParam, options?): APIPromise<TransactionClearedStatus>` | `POST /v1/quickbooks-desktop/transactions/{id}/cleared-status` | Update the cleared status of a transaction. Async mode: `{ async: true }`. |
 
 ## client.qbd.transfers
 
@@ -774,7 +774,6 @@ Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (p
 | Method | HTTP | Summary |
 | --- | --- | --- |
 | `client.qbd.unitOfMeasureSets.create(params: UnitOfMeasureSetCreateInput & ConductorEndUserParam, options?): APIPromise<UnitOfMeasureSet>` | `POST /v1/quickbooks-desktop/unit-of-measure-sets` | Create an unit of measure set. Async mode: `{ async: true }`. |
-| `client.qbd.unitOfMeasureSets.delete(id: string, params: UnitOfMeasureSetDeleteParams & ConductorEndUserParam, options?): APIPromise<UnitOfMeasureSetDeleted>` | `DELETE /v1/quickbooks-desktop/unit-of-measure-sets/{id}` | Delete an unit of measure set. Async mode: `{ async: true }`. |
 | `client.qbd.unitOfMeasureSets.list(params?: UnitOfMeasureSetListParams & ConductorEndUserParam, options?): APIPromise<UnitOfMeasureSetList>` | `GET /v1/quickbooks-desktop/unit-of-measure-sets` | List unit of measure sets. Async mode: `{ async: true }`. |
 | `client.qbd.unitOfMeasureSets.retrieve(id: string, options?): APIPromise<UnitOfMeasureSet>` | `GET /v1/quickbooks-desktop/unit-of-measure-sets/{id}` | Retrieve an unit of measure set. Async mode: `{ async: true }`. |
 

@@ -32,6 +32,7 @@ export {
   AuthenticationError,
   BillingError,
   CursorExpiredError,
+  type CursorExpiredReason,
   DaapiError,
   IntegrationConnectionError,
   IntegrationError,

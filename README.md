@@ -2,7 +2,7 @@
 
 The TypeScript and JavaScript client for [Desktop Accounting API](https://www.desktopaccountingapi.com/), a REST API for QuickBooks Desktop and QuickBooks Enterprise. Your server makes typed calls such as `client.qbd.invoices.create(...)`, and Desktop Accounting API delivers them to your customer's company file through the QuickBooks Web Connector.
 
-- Covers all 439 operations of API 1.0.0: QuickBooks objects and reports (`client.qbd`), end users, auth sessions, request tracking, qbXML passthrough and webhook verification.
+- Covers all 438 operations of API 1.0.0: QuickBooks objects and reports (`client.qbd`), end users, auth sessions, request tracking, qbXML passthrough and webhook verification.
 - Request and response types for every object, typed errors for every error code, and exact decimal strings for money.
 - Every write carries an idempotency key, retries happen only where they cannot duplicate data, and an expired QuickBooks cursor never restarts a list silently.
 - ES module and CommonJS builds with type declarations and no runtime dependencies. Runs in Node.js, Bun, Deno and Cloudflare Workers.
@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.7.0**. To pin it exactly:
+The current version is **0.8.0**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.7.0
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.7.0
-yarn add @desktopaccountingapi/quickbooks-desktop@0.7.0
-bun add @desktopaccountingapi/quickbooks-desktop@0.7.0
+npm install @desktopaccountingapi/quickbooks-desktop@0.8.0
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.8.0
+yarn add @desktopaccountingapi/quickbooks-desktop@0.8.0
+bun add @desktopaccountingapi/quickbooks-desktop@0.8.0
 ```
 
 ## Requirements
@@ -283,6 +283,15 @@ const invoice = await client.qbd.invoices.retrieve("7-1700000000");
 await client.qbd.invoices.update(invoice.id, { revisionNumber: invoice.revisionNumber, memo: null });
 ```
 
+### Required arguments and confirmations
+
+- Required parameters are required in the types. The SDK does not validate values itself (lengths, formats, combinations of filters): the API checks every request and answers `400 INVALID_PARAMETER`, naming the parameter, before anything reaches QuickBooks.
+- Destructive operations need `confirm: true`, typed as the literal `true`: `client.qbd.customers.delete(id, { confirm: true })`. Without it the call does not compile.
+- Transaction deletes and voids take no confirmation, as in Conductor. Deleting a list record, merging two records and deleting a custom field definition do, because they cannot be undone.
+- A list-record delete answers `deleted: true` only when QuickBooks removed the record. QuickBooks Desktop can accept the delete and keep the record inactive: then `deleted` is false and `deactivated` is true.
+- Quantities (`quantityCanBuild`, `totalMiles`, line quantities) can have decimals: QuickBooks stores them as decimal quantities, and units of measure allow fractions.
+- `CursorExpiredError` is an `InvalidRequestError`, because the API classifies `CURSOR_EXPIRED` as `INVALID_REQUEST_ERROR`. Catch it first when you handle the two differently; `err.reason` is a `CursorExpiredReason`.
+
 ## Pagination
 
 Lists marked as cursor lists in [api.md](api.md) return a `PagePromise`:
@@ -523,7 +532,7 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The API is versioned in its path (`/v1`). Within `v1` the API only adds operations, fields, enum values and error codes, and the SDK tolerates all of them, so older SDK versions keep working.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `f4cd9b5c733e...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `149fc7b0599d...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 
