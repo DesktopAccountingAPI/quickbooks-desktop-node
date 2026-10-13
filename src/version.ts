@@ -1,4 +1,4 @@
 // SDK version, replaced at generation time. Hand-written.
 
 /** Version of this SDK package (also sent in `User-Agent`). */
-export const VERSION = "0.7.0";
+export const VERSION = "0.8.0";

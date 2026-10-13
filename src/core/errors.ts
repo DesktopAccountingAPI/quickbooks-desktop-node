@@ -160,13 +160,25 @@ export interface CursorProgress {
  * older. An incremental sync keeps the `updatedAfter` watermark of its previous completed sync until
  * the whole traversal finishes (pagination guide, "Recovering from CURSOR_EXPIRED").
  */
+/**
+ * Why a cursor expired (`details.reason` of `CURSOR_EXPIRED`): the QuickBooks iterator was idle too long,
+ * its Web Connector session ended, QuickBooks restarted, or a newer cursor list evicted it. A value added
+ * after this SDK version arrives unchanged.
+ */
+export type CursorExpiredReason = "idle_timeout" | "session_ended" | "quickbooks_restarted" | "evicted" | (string & {});
+
+/**
+ * Note: `CursorExpiredError` is an `InvalidRequestError` because the API classifies `CURSOR_EXPIRED` as
+ * `INVALID_REQUEST_ERROR` (error classes follow `error.type`), although its status is `410`. Catch it
+ * before `InvalidRequestError` when you handle the two differently.
+ */
 export class CursorExpiredError extends InvalidRequestError {
   readonly itemsYielded: number;
   readonly pagesServed: number;
   readonly lastId: string | null;
   readonly lastUpdatedAt: string | null;
-  /** `details.reason`: `idle_timeout`, `session_ended`, `quickbooks_restarted` or `evicted`. */
-  readonly reason: string | null;
+  /** `details.reason`, or null when the API sent none. */
+  readonly reason: CursorExpiredReason | null;
 
   constructor(status: number | null, body: ErrorBody | undefined, headers?: Headers, progress?: Partial<CursorProgress>) {
     super(status, body, headers);
