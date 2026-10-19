@@ -2,7 +2,7 @@
 
 The TypeScript and JavaScript client for [Desktop Accounting API](https://www.desktopaccountingapi.com/), a REST API for QuickBooks Desktop and QuickBooks Enterprise. Your server makes typed calls such as `client.qbd.invoices.create(...)`, and Desktop Accounting API delivers them to your customer's company file through the QuickBooks Web Connector.
 
-- Covers all 438 operations of API 1.0.0: QuickBooks objects and reports (`client.qbd`), end users, auth sessions, request tracking, qbXML passthrough and webhook verification.
+- Covers all 439 operations of API 1.0.0: QuickBooks objects and reports (`client.qbd`), end users, auth sessions, request tracking, qbXML passthrough and webhook verification.
 - Request and response types for every object, typed errors for every error code, and exact decimal strings for money.
 - Every write carries an idempotency key, retries happen only where they cannot duplicate data, and an expired QuickBooks cursor never restarts a list silently.
 - ES module and CommonJS builds with type declarations and no runtime dependencies. Runs in Node.js, Bun, Deno and Cloudflare Workers.
@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.8.0**. To pin it exactly:
+The current version is **0.9.0**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.8.0
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.8.0
-yarn add @desktopaccountingapi/quickbooks-desktop@0.8.0
-bun add @desktopaccountingapi/quickbooks-desktop@0.8.0
+npm install @desktopaccountingapi/quickbooks-desktop@0.9.0
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.9.0
+yarn add @desktopaccountingapi/quickbooks-desktop@0.9.0
+bun add @desktopaccountingapi/quickbooks-desktop@0.9.0
 ```
 
 ## Requirements
@@ -382,7 +382,7 @@ The SDK retries (up to `maxRetries`, default 2):
 - `429` responses;
 - `5xx` responses with `Daapi-Should-Retry: true`.
 
-It never retries when the response says `Daapi-Should-Retry: false`, when the error's `outcome` is `unknown` or `pending`, or when a `5xx` body is not a JSON error. Backoff is 0.5 s doubling up to 8 s, with jitter; `Retry-After` (seconds or an HTTP date, up to 60 s) takes precedence. See the [idempotency guide](https://www.desktopaccountingapi.com/docs/guides/idempotency/).
+It never retries when the response says `Daapi-Should-Retry: false`, when the error's `outcome` is `unknown` or `pending`, or when a `5xx` body is not a JSON error. Backoff is 0.5 s doubling up to 8 s, with jitter; `Retry-After` (seconds or an HTTP date) takes precedence and is waited out in full, however long. When that wait would end after `totalTimeout`, the SDK throws the error at once instead of retrying sooner than the server asked. See the [idempotency guide](https://www.desktopaccountingapi.com/docs/guides/idempotency/).
 
 ## Timeouts
 
@@ -531,8 +531,8 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 - The package follows [semantic versioning](https://semver.org/). Before 1.0, a minor version may contain breaking changes; they are marked Breaking in the [CHANGELOG](https://github.com/DesktopAccountingAPI/quickbooks-desktop-node/blob/main/CHANGELOG.md).
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
-- The API is versioned in its path (`/v1`). Within `v1` the API only adds operations, fields, enum values and error codes, and the SDK tolerates all of them, so older SDK versions keep working.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `149fc7b0599d...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- The HTTP API is versioned in its path (`/v1`) and is additive-only from launch day. After launch, a breaking change requires a new version or an announced deprecation. Additive changes include new operations, fields, enum values and error codes; accept fields and enum values you do not know. This HTTP policy is separate from SDK versioning.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `e5fba4897290...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 

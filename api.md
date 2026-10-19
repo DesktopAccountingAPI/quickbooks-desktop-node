@@ -1,6 +1,6 @@
 # API reference
 
-Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `149fc7b0599d`, 438 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
+Every method of the Node.js SDK, generated from the API contract (`packages/api-contract/generated/openapi.json`, sha256 `e5fba4897290`, 439 operations). Field-level documentation is in the type definitions and at https://www.desktopaccountingapi.com/docs/.
 
 Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (per-call options), `APIPromise<T>` (awaitable with `.withResponse()` and `.asResponse()`), `PagePromise<T>` (cursor lists), `RequestHandle<T>` (async mode).
 
@@ -31,6 +31,7 @@ Shared types: `RequestOptions` / `SyncRequestOptions` / `AsyncRequestOptions` (p
 | `client.endUsers.list(params?: EndUserListParams, options?): PagePromise<EndUser>` | `GET /v1/end-users` | List end users. |
 | `client.endUsers.passthrough(id: string, params?: PassthroughInput, options?): APIPromise<PassthroughResponse>` | `POST /v1/end-users/{id}/passthrough/{integrationSlug}` | Send a raw qbXML request. Async mode: `{ async: true }`. |
 | `client.endUsers.passthroughXml(id: string, xml: string, options?): APIPromise<string>` | `POST /v1/end-users/{id}/passthrough/{integrationSlug}` | Send a raw qbXML request. Async mode: `{ async: true }`. |
+| `client.endUsers.removeConnectionInstall(id: string, installId: string, options?): APIPromise<EndUserConnection>` | `POST /v1/end-users/{id}/connection/installs/{installId}/remove` | Remove a Web Connector install. |
 | `client.endUsers.resetCompanyFile(id: string, params: EndUserResetCompanyFileInput, options?): APIPromise<EndUser>` | `POST /v1/end-users/{id}/reset-company-file` | Reset the company file. |
 | `client.endUsers.retrieve(id: string, options?): APIPromise<EndUser>` | `GET /v1/end-users/{id}` | Retrieve an end user. |
 | `client.endUsers.retrieveConnection(id: string, options?): APIPromise<EndUserConnection>` | `GET /v1/end-users/{id}/connection` | Retrieve the connection. |

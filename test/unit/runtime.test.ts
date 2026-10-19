@@ -95,7 +95,9 @@ describe("backoff", () => {
     assert.equal(parseRetryAfter(new Date(10_000).toUTCString(), 7_000), 3000);
     assert.equal(parseRetryAfter("soon"), undefined);
     assert.equal(parseRetryAfter(null), undefined);
-    assert.equal(parseRetryAfter("3600"), undefined, "longer than the cap falls back to exponential backoff");
+    assert.equal(parseRetryAfter("120"), 120_000, "values above 60 s are kept, never shortened");
+    assert.equal(parseRetryAfter("3600"), 3_600_000);
+    assert.equal(parseRetryAfter("9".repeat(400)), undefined, "a non-finite value is invalid");
   });
 
   test("exponential from 0.5 s, capped at 8 s, with at most 25% jitter", () => {
@@ -105,6 +107,7 @@ describe("backoff", () => {
     assert.equal(retryDelay(10, null, () => 0), 8000);
     assert.equal(retryDelay(0, null, () => 1), 375);
     assert.equal(retryDelay(4, "0", () => 0.5), 0, "Retry-After wins");
+    assert.equal(retryDelay(0, "120", () => 0.5), 120_000, "a long Retry-After is not replaced by backoff");
   });
 });
 
