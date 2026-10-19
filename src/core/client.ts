@@ -32,7 +32,7 @@ import {
   WebhookVerificationError,
   type ErrorBody,
 } from "./errors.ts";
-import { buildQuery, readEnv, retryDelay, shouldRetry, sleep } from "./http.ts";
+import { buildQuery, MAX_RETRY_WAIT_MS, readEnv, retryDelay, retryTiming, shouldRetry } from "./http.ts";
 import { PagePromise, type CursorPage } from "./pagination.ts";
 import { RequestHandle, type RequestHandleBackend } from "./request-handle.ts";
 import { Webhooks } from "./webhooks.ts";
@@ -546,11 +546,16 @@ export class BaseClient {
     body: string | undefined,
     opts: SendOptions,
   ): Promise<Attempt> {
-    /** Waits before the next attempt. False when the total timeout would end first. */
+    /**
+     * Waits the full delay before the next attempt. False, without waiting, when the total timeout
+     * would end first or the delay is longer than the SDK can schedule: the caller then throws the
+     * error instead of retrying sooner than `Retry-After` asked.
+     */
     const backoff = async (delay: number): Promise<boolean> => {
+      if (delay > MAX_RETRY_WAIT_MS) return false;
       if (opts.deadline !== undefined && Date.now() + delay >= opts.deadline) return false;
       try {
-        await sleep(delay, opts.signal);
+        await retryTiming.sleep(delay, opts.signal);
       } catch (err) {
         throw new ApiUserAbortError("Request aborted by the caller", { cause: err });
       }

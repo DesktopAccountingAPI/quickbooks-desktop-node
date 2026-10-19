@@ -35,6 +35,7 @@ import {
   type RequestHandle,
   type RequestOptions,
 } from "../src/index.ts";
+import { retryTiming } from "../src/core/http.ts";
 import { OPERATIONS } from "../src/generated/operations.ts";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -71,6 +72,7 @@ interface Scenario {
     handle?: { id?: string; status?: string };
     response?: { status?: number; requestId?: string; headers?: Record<string, string> };
     error?: Record<string, Json>;
+    retryDelaysMs?: number[];
   };
 }
 
@@ -219,10 +221,12 @@ interface Observed {
   response?: Response;
   requestId?: string | null;
   error?: unknown;
+  /** Every wait before a retry, in ms, recorded instead of waiting (scenarios with `retryDelaysMs`). */
+  retryDelays: number[];
 }
 
 async function runScenario(sc: Scenario): Promise<Observed> {
-  const observed: Observed = { items: [] };
+  const observed: Observed = { items: [], retryDelays: [] };
   let client: DesktopAccountingApi;
   try {
     client = makeClient(sc);
@@ -313,6 +317,14 @@ function checkOutcome(sc: Scenario, observed: Observed): void {
     if (out.handle.id !== undefined) assert.equal(observed.handle.id, out.handle.id, "handle.id");
     if (out.handle.status !== undefined) assert.equal(observed.handle.request.status, out.handle.status, "handle.status");
   }
+  if (out.retryDelaysMs) {
+    // Never sooner than expected (Retry-After is a minimum) and no more than 50 ms later.
+    assert.equal(observed.retryDelays.length, out.retryDelaysMs.length, `retry delays ${JSON.stringify(observed.retryDelays)}`);
+    out.retryDelaysMs.forEach((expected, i) => {
+      const actual = observed.retryDelays[i]!;
+      assert.ok(actual >= expected && actual <= expected + 50, `retry delay ${i}: ${actual} ms, expected ${expected} ms`);
+    });
+  }
   if (out.response) {
     assert.ok(observed.response, "expected a response");
     if (out.response.status !== undefined) assert.equal(observed.response.status, out.response.status, "response.status");
@@ -326,7 +338,17 @@ describe("scenarios", () => {
     test(sc.name, { skip: sc.only !== undefined && !sc.only.includes("node") }, async () => {
       const reset = await fetch(`${baseUrl}/_control/reset/${sc.name}`, { method: "POST" });
       assert.equal(reset.status, 204);
-      const observed = await runScenario(sc);
+      // Scenarios with `retryDelaysMs` record each wait before a retry instead of sleeping.
+      const recorded: number[] = [];
+      const realSleep = retryTiming.sleep;
+      if (sc.outcome.retryDelaysMs) retryTiming.sleep = async (ms) => void recorded.push(ms);
+      let observed: Observed;
+      try {
+        observed = await runScenario(sc);
+      } finally {
+        retryTiming.sleep = realSleep;
+      }
+      observed.retryDelays = recorded;
       const verify = (await (await fetch(`${baseUrl}/_control/verify/${sc.name}`)).json()) as { ok: boolean; errors: string[] };
       assert.ok(verify.ok, `mock server: ${verify.errors.join("; ")}`);
       checkOutcome(sc, observed);

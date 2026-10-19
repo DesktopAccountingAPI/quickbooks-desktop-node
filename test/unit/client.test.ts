@@ -34,6 +34,7 @@ import {
   type Logger,
 } from "../../src/index.ts";
 import DefaultExport from "../../src/index.ts";
+import { retryTiming } from "../../src/core/http.ts";
 import { apiError, client, END_USER, invoice, json, page, requestResource, scriptedFetch, TEST_KEY } from "./helpers.ts";
 
 let savedKey: string | undefined;
@@ -238,6 +239,57 @@ describe("retries and timeouts", () => {
     const { fetch, calls } = scriptedFetch([reply(), reply()]);
     await assert.rejects(client(fetch).qbd.invoices.retrieve("1", { totalTimeout: 500 }), IntegrationConnectionError);
     assert.equal(calls.length, 1, "Retry-After 1 s is longer than the remaining budget");
+  });
+
+  describe("Retry-After longer than 60 s", () => {
+    const realSleep = retryTiming.sleep;
+    let waits: number[];
+    beforeEach(() => {
+      waits = [];
+      retryTiming.sleep = async (ms) => void waits.push(ms);
+    });
+    afterEach(() => {
+      retryTiming.sleep = realSleep;
+    });
+    const limited = (retryAfter: string): Response => apiError(429, { type: "RATE_LIMIT_ERROR", code: "RATE_LIMITED" }, { "Retry-After": retryAfter });
+
+    test("is waited out in full within the total timeout", async () => {
+      const { fetch, calls } = scriptedFetch([limited("120"), json(200, invoice("1"))]);
+      await client(fetch, { totalTimeout: 180_000 }).qbd.invoices.retrieve("1");
+      assert.equal(calls.length, 2);
+      assert.deepEqual(waits, [120_000]);
+    });
+
+    test("is waited out in full without a total timeout", async () => {
+      const { fetch, calls } = scriptedFetch([limited("120"), json(200, invoice("1"))]);
+      await client(fetch).qbd.invoices.retrieve("1");
+      assert.equal(calls.length, 2);
+      assert.deepEqual(waits, [120_000]);
+    });
+
+    test("returns the error at once when the total timeout would end first", async () => {
+      const { fetch, calls } = scriptedFetch([limited("120"), json(200, invoice("1"))]);
+      await assert.rejects(client(fetch, { totalTimeout: 60_000 }).qbd.invoices.retrieve("1"), RateLimitError);
+      assert.equal(calls.length, 1, "never retried sooner than Retry-After");
+      assert.deepEqual(waits, []);
+    });
+
+    test("returns the error when the wait is longer than a timer allows", async () => {
+      const { fetch, calls } = scriptedFetch([limited(String(30 * 24 * 3600)), json(200, invoice("1"))]);
+      await assert.rejects(client(fetch).qbd.invoices.retrieve("1"), RateLimitError);
+      assert.equal(calls.length, 1);
+      assert.deepEqual(waits, []);
+    });
+
+    test("a write waits the full delay and keeps its idempotency key", async () => {
+      const { fetch, calls } = scriptedFetch([limited("120"), json(201, invoice("7"))]);
+      await client(fetch, { totalTimeout: 180_000 }).qbd.invoices.create({ customerId: "1" });
+      assert.equal(calls.length, 2);
+      assert.deepEqual(waits, [120_000]);
+      const keys = calls.map((c) => c.headers.get("idempotency-key"));
+      assert.ok(keys[0]);
+      assert.equal(keys[1], keys[0]);
+    });
   });
 
   test("totalTimeout is the wait budget for a pending request", async () => {

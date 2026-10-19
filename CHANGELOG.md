@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.0 (2026-10-19)
+
+- `Retry-After` is waited out in full, including values above 60 s. A longer value used to fall back to the 0.5 to 8 s backoff, so the retry came sooner than the server asked. When the wait would end after `totalTimeout` (or is longer than about 24.8 days, the longest timer), the SDK throws the error without retrying.
+
 ## 0.8.0 (2026-10-13)
 
 - A read that was sent, interrupted (for example when QuickBooks closed unexpectedly, HRESULT 0x80040402) and queued for its automatic retry now ends with `QBD_READ_INTERRUPTED` (502, `details.reason`, `details.retry`, `details.firstSentAt`) when the retry is not sent in time. It answered `504 REQUEST_TIMEOUT_NOT_SENT` with `sentAt: null`. A request's `sentAt` is no longer reset to null by the retry.

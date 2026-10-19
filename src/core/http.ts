@@ -42,12 +42,16 @@ export function shouldRetry(status: number, shouldRetryHeader: string | null, ou
   return status >= 500 && header === "true";
 }
 
-/** Longest `Retry-After` the SDK waits for; longer values fall back to exponential backoff. */
-export const MAX_RETRY_AFTER_SECONDS = 60;
+/**
+ * Longest wait the SDK can schedule (the largest `setTimeout` delay, about 24.8 days). A longer
+ * `Retry-After` is not waited out: the error is returned instead, never retried sooner.
+ */
+export const MAX_RETRY_WAIT_MS = 2_147_483_647;
 
 /**
- * Parses `Retry-After` as delay seconds (`0`, `1.5`) or an HTTP date. Returns milliseconds,
- * or undefined when the header is absent, invalid or longer than {@link MAX_RETRY_AFTER_SECONDS}.
+ * Parses `Retry-After` as delay seconds (`0`, `1.5`, `120`) or an HTTP date. Returns milliseconds,
+ * or undefined when the header is absent or invalid. Any length is returned: the caller waits it
+ * out in full or does not retry (see `totalTimeout`).
  */
 export function parseRetryAfter(value: string | null, now: number = Date.now()): number | undefined {
   if (value === null) return undefined;
@@ -59,12 +63,12 @@ export function parseRetryAfter(value: string | null, now: number = Date.now()):
     if (Number.isNaN(date)) return undefined;
     ms = Math.max(0, date - now);
   }
-  return ms <= MAX_RETRY_AFTER_SECONDS * 1000 ? ms : undefined;
+  return Number.isFinite(ms) ? ms : undefined;
 }
 
 /**
- * Delay before retry number `attempt + 1` (attempt counts from 0): `Retry-After` when present,
- * else 0.5 s * 2^attempt capped at 8 s, minus up to 25% jitter.
+ * Delay before retry number `attempt + 1` (attempt counts from 0): `Retry-After` when present
+ * (whatever its length), else 0.5 s * 2^attempt capped at 8 s, minus up to 25% jitter.
  */
 export function retryDelay(attempt: number, retryAfter: string | null, random: () => number = Math.random): number {
   const fromHeader = parseRetryAfter(retryAfter);
@@ -98,6 +102,14 @@ export function getHeader(headers: HeadersLike, name: string): string | undefine
   }
   return undefined;
 }
+
+/**
+ * The wait between retries. Internal test seam: the conformance suite replaces `retryTiming.sleep`
+ * to record retry delays without waiting. Not part of the public API.
+ */
+export const retryTiming: { sleep: (ms: number, signal?: AbortSignal) => Promise<void> } = {
+  sleep: (ms, signal) => sleep(ms, signal),
+};
 
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
