@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.9.0**. To pin it exactly:
+The current version is **0.9.1**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.9.0
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.9.0
-yarn add @desktopaccountingapi/quickbooks-desktop@0.9.0
-bun add @desktopaccountingapi/quickbooks-desktop@0.9.0
+npm install @desktopaccountingapi/quickbooks-desktop@0.9.1
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.9.1
+yarn add @desktopaccountingapi/quickbooks-desktop@0.9.1
+bun add @desktopaccountingapi/quickbooks-desktop@0.9.1
 ```
 
 ## Requirements
@@ -532,7 +532,7 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The HTTP API is versioned in its path (`/v1`) and is additive-only from launch day. After launch, a breaking change requires a new version or an announced deprecation. Additive changes include new operations, fields, enum values and error codes; accept fields and enum values you do not know. This HTTP policy is separate from SDK versioning.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `e5fba4897290...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `7ebdb557fe6b...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 
