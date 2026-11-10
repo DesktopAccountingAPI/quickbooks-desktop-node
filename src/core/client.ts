@@ -28,6 +28,7 @@ import {
   PermissionError,
   RateLimitError,
   RequestPendingError,
+  ResultUnavailableError,
   UnprocessableEntityError,
   WebhookVerificationError,
   type ErrorBody,
@@ -314,6 +315,7 @@ export class BaseClient {
   static readonly IntegrationError = IntegrationError;
   static readonly OutcomeUnknownError = OutcomeUnknownError;
   static readonly InternalError = InternalError;
+  static readonly ResultUnavailableError = ResultUnavailableError;
   static readonly CursorExpiredError = CursorExpiredError;
   static readonly RequestPendingError = RequestPendingError;
   static readonly WebhookVerificationError = WebhookVerificationError;
@@ -615,7 +617,8 @@ export class BaseClient {
       if (response.status === 504 && error.code === "QBD_REQUEST_TIMEOUT" && typeof pendingId === "string" && pendingId !== "") {
         return { pendingRequestId: pendingId, error };
       }
-      if (attempt < opts.maxRetries && shouldRetry(response.status, response.headers.get("daapi-should-retry"), errorBody?.outcome)) {
+      // A write that was applied but whose result is gone is never sent again, whatever the headers say.
+      if (attempt < opts.maxRetries && !(error instanceof ResultUnavailableError) && shouldRetry(response.status, response.headers.get("daapi-should-retry"), errorBody?.outcome)) {
         const delay = retryDelay(attempt, response.headers.get("retry-after"));
         this.#log("warn", "daapi retrying", { method, path, status: response.status, code: error.code, requestId, attempt, delayMs: delay });
         if (await backoff(delay)) continue;
@@ -751,6 +754,10 @@ export function settleRequest<T>(request: Request): { value: T } | undefined {
       // (for example QBD_RESPONSE_UNREADABLE with outcome applied): raise that catalog error,
       // never a null result (codex review #4).
       if (request.error) throw requestError(request);
+      // A single write the platform recovered after a lost acknowledgement: QuickBooks applied it,
+      // but its response body never arrived, so there is no result to return (review R3-03). This
+      // comes before the expiry check: an expired recovered write is still this typed error (SA-03).
+      if (request.result === null && (request.recovered || request.recoveredObjectId)) throw recoveredWriteError(request);
       if (request.resultExpired) {
         throw new DaapiError(`Request ${request.id} succeeded, but its result is past the retention period; retrieve the object instead.`);
       }
@@ -762,6 +769,22 @@ export function settleRequest<T>(request: Request): { value: T } | undefined {
     default:
       return undefined;
   }
+}
+
+function recoveredWriteError(request: Request): ResultUnavailableError {
+  const objectId = request.recoveredObjectId ?? null;
+  return new ResultUnavailableError(null, {
+    type: "INTERNAL_ERROR",
+    code: "INTERNAL_ERROR",
+    message:
+      `Request ${request.id} completed and QuickBooks applied it, but its result is not available: the platform recovered the write without QuickBooks' response. ` +
+      (objectId ? `Retrieve the object by its ID ${objectId}. ` : "") +
+      "Do not send it again.",
+    requestId: request.id,
+    retryable: false,
+    outcome: "applied",
+    details: { requestId: request.id, reason: "result_unavailable", recoveredObjectId: objectId },
+  });
 }
 
 function requestError(request: Request): ApiError {

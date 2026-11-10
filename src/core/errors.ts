@@ -4,7 +4,8 @@
 // ├─ ApiError                any non-2xx API response (or a failed request resource)
 // │  ├─ InvalidRequestError  ── CursorExpiredError
 // │  ├─ AuthenticationError, PermissionError, BillingError, RateLimitError
-// │  ├─ IntegrationConnectionError, IntegrationError, OutcomeUnknownError, InternalError
+// │  ├─ IntegrationConnectionError, IntegrationError, OutcomeUnknownError
+// │  ├─ InternalError        ── ResultUnavailableError
 // ├─ ApiConnectionError      no response (network failure) ── ApiTimeoutError
 // ├─ ApiUserAbortError       the caller's AbortSignal fired
 // ├─ RequestPendingError     the request is still running when the client timeout ends
@@ -139,6 +140,25 @@ export class IntegrationError extends ApiError {}
 /** A write reached QuickBooks but its result could not be confirmed. The SDK never retries it. */
 export class OutcomeUnknownError extends ApiError {}
 export class InternalError extends ApiError {}
+
+/**
+ * The result is no longer available. For a write that was applied (`outcome` `applied`), never send
+ * it again: read the object instead, by `recoveredObjectId` when it is set (the platform recovered
+ * the write after a lost acknowledgement), or by your `externalId` or `refNumber`. For a read
+ * (`outcome` `not_applicable`), it is safe to send the read again. Raised for a recovered write
+ * (`result` null) and for `500 INTERNAL_ERROR` with `details.reason` `result_unavailable`. The SDK
+ * never retries it. It is an `InternalError` because the API classifies it as `INTERNAL_ERROR`.
+ */
+export class ResultUnavailableError extends InternalError {
+  /** QuickBooks ID of the object the write created or changed (`details.recoveredObjectId`), or null when the API did not name one. */
+  readonly recoveredObjectId: string | null;
+
+  constructor(status: number | null, body: ErrorBody | undefined, headers?: Headers) {
+    super(status, body, headers);
+    const id = body?.details?.["recoveredObjectId"];
+    this.recoveredObjectId = typeof id === "string" && id !== "" ? id : null;
+  }
+}
 
 /** Progress of an auto-paginating iteration when its cursor expired. */
 export interface CursorProgress {
@@ -302,6 +322,7 @@ export function makeApiError(status: number | null, body: ErrorBody | undefined,
   if (body?.code === "CURSOR_EXPIRED" && (body.type === undefined || body.type === null || body.type === "INVALID_REQUEST_ERROR")) {
     return new CursorExpiredError(status, body, headers);
   }
+  if (body?.type === "INTERNAL_ERROR" && body.details?.["reason"] === "result_unavailable") return new ResultUnavailableError(status, body, headers);
   const ctor = (body?.type && Object.hasOwn(BY_TYPE, body.type) ? BY_TYPE[body.type] : undefined) ?? ApiError;
   if (ctor === ApiError) return new ApiError(status, body, headers, message);
   return new ctor(status, body, headers);

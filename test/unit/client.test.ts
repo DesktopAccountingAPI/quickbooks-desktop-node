@@ -19,6 +19,7 @@ import {
   DaapiError,
   DesktopAccountingApi,
   IntegrationConnectionError,
+  InternalError,
   InternalServerError,
   InvalidRequestError,
   NotFoundError,
@@ -28,6 +29,7 @@ import {
   RateLimitError,
   RequestHandle,
   RequestPendingError,
+  ResultUnavailableError,
   UnprocessableEntityError,
   VERSION,
   type Invoice,
@@ -366,6 +368,22 @@ describe("async mode", () => {
     const { fetch } = scriptedFetch([json(202, requestResource("queued")), json(200, requestResource("sent"))]);
     const handle = await client(fetch).qbd.invoices.void("7", { async: true });
     await assert.rejects(handle.result(), RequestPendingError);
+  });
+
+  for (const resultExpired of [false, true]) test(`result() on a write recovered without its result raises ResultUnavailableError with the object ID (resultExpired ${resultExpired})`, async () => {
+    const recovered = requestResource("succeeded", { outcome: "applied", result: null, resultExpired, recovered: true, recoveredObjectId: "8000000C-1700000000" });
+    const { fetch } = scriptedFetch([json(202, requestResource("queued")), json(200, recovered)]);
+    const handle = await client(fetch).qbd.invoices.create({ customerId: "c" }, { async: true, idempotencyKey: "key-1" });
+    await assert.rejects(handle.result(), (e: unknown) => {
+      assert.ok(e instanceof ResultUnavailableError, String(e));
+      assert.ok(e instanceof InternalError);
+      assert.equal(e.requestId, "req_1");
+      assert.equal(e.outcome, "applied");
+      assert.equal(e.recoveredObjectId, "8000000C-1700000000");
+      assert.equal(e.retryable, false);
+      assert.equal(e.idempotencyKey, "key-1");
+      return true;
+    });
   });
 });
 

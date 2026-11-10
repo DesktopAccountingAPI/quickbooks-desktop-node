@@ -44,8 +44,9 @@ export class RequestHandle<T> {
   /**
    * Long-polls `GET /v1/requests/{id}?waitSeconds=...` until the request settles.
    * Returns the typed result on `succeeded`; throws the typed error on `failed`, `canceled` or
-   * `outcome_unknown`; throws `RequestPendingError` when `timeout` (milliseconds, default the
-   * client timeout) passes first or a poll fails (never the poll's own error).
+   * `outcome_unknown`; throws `ResultUnavailableError` (with `recoveredObjectId`) for a write that
+   * was applied but has no result body; throws `RequestPendingError` when `timeout` (milliseconds,
+   * default the client timeout) passes first or a poll fails (never the poll's own error).
    */
   wait(options: { timeout?: number | undefined } = {}): Promise<T> {
     const deadline = Date.now() + (options.timeout ?? this.#backend.defaultTimeout);
@@ -61,8 +62,9 @@ export class RequestHandle<T> {
   }
 
   /**
-   * One GET: the typed result if the request succeeded, the typed error if it failed, or
-   * `RequestPendingError` if it has not finished yet.
+   * One GET: the typed result if the request succeeded, the typed error if it failed,
+   * `ResultUnavailableError` (with `recoveredObjectId`) if the write was applied but has no result
+   * body, or `RequestPendingError` if it has not finished yet.
    */
   async result(): Promise<T> {
     try {

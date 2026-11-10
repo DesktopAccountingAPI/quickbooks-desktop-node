@@ -42,6 +42,7 @@ export {
   PermissionError,
   RateLimitError,
   RequestPendingError,
+  ResultUnavailableError,
   WebhookVerificationError,
   type CursorProgress,
   type ErrorBody,

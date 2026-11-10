@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.10.0**. To pin it exactly:
+The current version is **0.11.0**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.10.0
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.10.0
-yarn add @desktopaccountingapi/quickbooks-desktop@0.10.0
-bun add @desktopaccountingapi/quickbooks-desktop@0.10.0
+npm install @desktopaccountingapi/quickbooks-desktop@0.11.0
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.11.0
+yarn add @desktopaccountingapi/quickbooks-desktop@0.11.0
+bun add @desktopaccountingapi/quickbooks-desktop@0.11.0
 ```
 
 ## Requirements
@@ -347,6 +347,7 @@ Every error extends `DaapiError`:
 | `ApiError` | Any error response from the API. Unknown error types use this class. |
 | `InvalidRequestError`, `AuthenticationError`, `PermissionError`, `BillingError`, `RateLimitError`, `IntegrationConnectionError`, `IntegrationError`, `OutcomeUnknownError`, `InternalError` | One subclass of `ApiError` per error `type`. |
 | `CursorExpiredError` | `InvalidRequestError` for an expired cursor, with progress fields. |
+| `ResultUnavailableError` | `InternalError`: the result is no longer available. For an applied write (`outcome` `applied`), never send it again; read the object instead (`recoveredObjectId` when set). For a read (`not_applicable`), it is safe to send it again. |
 | `ApiConnectionError`, `ApiTimeoutError` | No response arrived (connection failure or client timeout) after all retries. |
 | `ApiUserAbortError` | Your `signal` aborted the call. |
 | `RequestPendingError` | The request is still running in QuickBooks when the client timeout ends. It has `requestId`. |
@@ -532,7 +533,7 @@ The [migration guide](https://www.desktopaccountingapi.com/docs/get-started/migr
 - The Node.js, Python, .NET and Java SDKs and the [MCP server](https://github.com/DesktopAccountingAPI/quickbooks-desktop-mcp) are released together with the same version number, generated from the same API contract.
 - Every release is listed in [CHANGELOG.md](CHANGELOG.md) and tagged `v<version>` on GitHub.
 - The HTTP API is versioned in its path (`/v1`) and is additive-only from launch day. After launch, a breaking change requires a new version or an announced deprecation. Additive changes include new operations, fields, enum values and error codes; accept fields and enum values you do not know. This HTTP policy is separate from SDK versioning.
-- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `cc10a44bbe26...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
+- Each release records the exact contract it was generated from in `.daapi-sdk.json` (contract sha256 `b091ed70ce41...`, generator version, operation count) and exports it as `CONTRACT_SHA256` and `API_VERSION`. `VERSION` is the package version, also sent as `User-Agent: desktopaccountingapi-node/<version>`.
 
 ## Support
 
