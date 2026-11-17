@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.11.1 (2026-11-17)
+
+- Released in lockstep with the other Desktop Accounting API packages; no entries for this package.
+
 ## 0.11.0 (2026-11-10)
 
 - **Breaking:** discriminated unions narrow on their discriminator. `Item`, `Entity` and `BatchResult` are now unions of the kinds this SDK models, so `if (item.objectType === "qbd_service_item")` or a `switch` gives a `ServiceItem`; before, the fallback stayed in the union and the narrowed value was `ServiceItem | UnrecognizedItem`. The fallbacks `UnrecognizedItem`, `UnrecognizedEntity` and `UnknownBatchResult` are separate types, and new type guards test each kind: `isServiceItem(item)`, `isVendor(entity)`, `isBatchCustomerCreateResult(result)` and so on, plus `isUnrecognizedItem`, `isUnrecognizedEntity` and `isUnknownBatchResult` for a kind this SDK does not model. Such a kind still arrives unchanged at runtime. Migration: test it with the fallback guard before narrowing (`if (isUnrecognizedItem(item)) { ... }`), instead of comparing `objectType` with `"qbd_unrecognized_item"` or another string this SDK does not list (a type error now), assigning an `UnrecognizedItem` to `Item`, or reading fields in the `default` branch of a `switch` over every kind (the value is `never` there).

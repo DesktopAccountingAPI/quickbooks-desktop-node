@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.11.0**. To pin it exactly:
+The current version is **0.11.1**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.11.0
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.11.0
-yarn add @desktopaccountingapi/quickbooks-desktop@0.11.0
-bun add @desktopaccountingapi/quickbooks-desktop@0.11.0
+npm install @desktopaccountingapi/quickbooks-desktop@0.11.1
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.11.1
+yarn add @desktopaccountingapi/quickbooks-desktop@0.11.1
+bun add @desktopaccountingapi/quickbooks-desktop@0.11.1
 ```
 
 ## Requirements
