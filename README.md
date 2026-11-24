@@ -15,13 +15,13 @@ The TypeScript and JavaScript client for [Desktop Accounting API](https://www.de
 npm install @desktopaccountingapi/quickbooks-desktop
 ```
 
-The current version is **0.12.1**. To pin it exactly:
+The current version is **0.12.2**. To pin it exactly:
 
 ```sh
-npm install @desktopaccountingapi/quickbooks-desktop@0.12.1
-pnpm add @desktopaccountingapi/quickbooks-desktop@0.12.1
-yarn add @desktopaccountingapi/quickbooks-desktop@0.12.1
-bun add @desktopaccountingapi/quickbooks-desktop@0.12.1
+npm install @desktopaccountingapi/quickbooks-desktop@0.12.2
+pnpm add @desktopaccountingapi/quickbooks-desktop@0.12.2
+yarn add @desktopaccountingapi/quickbooks-desktop@0.12.2
+bun add @desktopaccountingapi/quickbooks-desktop@0.12.2
 ```
 
 ## Requirements
@@ -196,7 +196,7 @@ QuickBooks only processes requests while the end user's Web Connector is running
 
 ```ts
 const handle = await client.qbd.invoices.create(
-  { customerId: "80000001-1700000000", lines: [{ itemId: "80000005-1700000000", quantity: 1 }] },
+  { customerId: "80000001-1700000000", transactionDate: "2026-10-05", lines: [{ itemId: "80000005-1700000000", quantity: 1 }] },
   { async: true, queueTtl: 3600, idempotencyKey: "order-8813-invoice" },
 );
 console.log(handle.id, handle.request.status); // "req_...", "queued"
@@ -399,7 +399,7 @@ If QuickBooks is still working when the server timeout ends, the API answers `50
 import { RequestPendingError } from "@desktopaccountingapi/quickbooks-desktop";
 
 try {
-  await client.qbd.invoices.create({ customerId: "80000001-1700000000" }, { idempotencyKey: "order-8814-invoice" });
+  await client.qbd.invoices.create({ customerId: "80000001-1700000000", transactionDate: "2026-10-05" }, { idempotencyKey: "order-8814-invoice" });
 } catch (err) {
   if (!(err instanceof RequestPendingError)) throw err;
   const request = await client.requests.retrieve(err.requestId);
@@ -412,7 +412,7 @@ try {
 Operations that can run asynchronously accept `{ async: true }`. The API answers `202 Accepted` at once and the call returns a `RequestHandle`:
 
 ```ts
-const handle = await client.qbd.invoices.create({ customerId: "80000001-1700000000" }, { async: true, queueTtl: 3600 });
+const handle = await client.qbd.invoices.create({ customerId: "80000001-1700000000", transactionDate: "2026-10-05" }, { async: true, queueTtl: 3600 });
 console.log(handle.id, handle.request.status); // "req_...", "queued"
 const current = await handle.status(); // current request resource
 console.log(current.status);
